@@ -238,6 +238,17 @@ cargo test --workspace
   `perf(audio): ...`, `docs: ...`, `test: ...`, `chore: ...`, `refactor: ...`.
 - Un commit = un paso del plan. Mensaje en inglés, cuerpo explicando el *por
   qué* cuando no sea evidente.
+- **Sin metadatos de herramienta en el historial.** Ni en commits ni en pull
+  requests se escriben remolques de atribución ni enlaces de sesión:
+
+  - `Co-Authored-By:` de asistentes o bots.
+  - `Claude-Session:`, `Generated with ...` y cualquier enlace a una sesión.
+  - Identificadores de modelo (`claude-opus-5`, `Opus 5`, …) en el mensaje.
+
+  El historial cuenta *qué cambió y por qué*, no con qué se escribió. Un enlace
+  de sesión además caduca y apunta a algo que solo su autor puede abrir, así que
+  como referencia no vale nada. Si un asistente añade estos remolques por
+  omisión, se quitan antes del commit.
 - No se sube nada generado (`/target`, capturas, binarios). `assets/` solo
   ficheros pequeños necesarios para tests.
 
@@ -246,19 +257,31 @@ cargo test --workspace
 ## 8. Estado actual
 
 **Fase 0 cerrada.** El workspace existe, la puerta de calidad corre en local y
-en CI, y `voltra info` funciona. Crates vivas: `voltra-core` y `voltra-cli`; las
-demás se crearán cuando haya código que meter en ellas.
+en CI, y `voltra info` funciona.
 
-**Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
-colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
-benchmarks de referencia. y conversión de color RGB→YUV (plan 004). pool de frames (plan 005) y los traits de fuente con la
-primera fuente real (plan 006) y el grafo de escena (plan 007). Siguiente: el
-grafo de escena (plan 007) y el compositor CPU (plan 008). Siguiente: la salida
-Y4M (plan 009), el primer hito visible. Secuencia en `docs/ROADMAP.md`.
+**Fase 1 cerrada.** `voltra-core` tiene reloj racional y geometría de colocación
+(plan 002), formatos de píxel con `VideoFrame` (plan 003), conversión de color
+RGB→YUV (plan 004), pool de frames (plan 005), los traits de fuente con la
+primera fuente real (plan 006) y el grafo de escena (plan 007), todo con
+benchmarks de referencia.
 
-El plan 008 dejó un veredicto con datos: el compositor CPU está 8× por encima de
-su presupuesto y **la GPU del ADR 0001 es un requisito, no una mejora**. Ver
-`docs/PERFORMANCE.md` §3.4.
+**Fase 2 en curso.** El compositor CPU está hecho (plan 008) y la salida Y4M
+también (plan 009): **`voltra render` produce un fichero de vídeo que se ve**, y
+es el primer hito visible del proyecto.
+
+```bash
+voltra render -o - --frames 300 | ffplay -
+```
+
+Crates vivas: `voltra-core`, `voltra-render`, `voltra-sources`, `voltra-output`
+y `voltra-cli`; las demás se crearán cuando haya código que meter en ellas.
+
+**Lo que falta para cerrar la fase 2 es el backend GPU.** El plan 008 dejó un
+veredicto con datos: el compositor CPU está 8× por encima de su presupuesto y
+**la GPU del ADR 0001 es un requisito, no una mejora** (`docs/PERFORMANCE.md`
+§3.4). El plan 009 lo confirmó desde el pipeline completo: 1080p60 con muestreo
+bilineal cuesta 25,96 ms de los 16,6 disponibles. Siguiente paso: el plan del
+backend `wgpu`. Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -270,4 +293,5 @@ Decisiones ya tomadas (ver `docs/adr/`):
 | 0004 | Interfaz: `egui`/`eframe`. |
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
+Formato de salida actual: `docs/references/y4m.md`.
 Fases del producto: `docs/ROADMAP.md`.

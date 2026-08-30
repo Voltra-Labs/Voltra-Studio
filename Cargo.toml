@@ -4,6 +4,7 @@ members = [
     "crates/voltra-core",
     "crates/voltra-sources",
     "crates/voltra-render",
+    "crates/voltra-output",
     "crates/voltra-cli",
 ]
 
@@ -19,6 +20,7 @@ authors = ["Voltra Labs"]
 voltra-core = { path = "crates/voltra-core", version = "0.1.0" }
 voltra-sources = { path = "crates/voltra-sources", version = "0.1.0" }
 voltra-render = { path = "crates/voltra-render", version = "0.1.0" }
+voltra-output = { path = "crates/voltra-output", version = "0.1.0" }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

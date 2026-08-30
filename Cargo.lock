@@ -583,6 +583,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "voltra-core",
+ "voltra-output",
+ "voltra-render",
+ "voltra-sources",
 ]
 
 [[package]]
@@ -591,6 +594,13 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "thiserror",
+]
+
+[[package]]
+name = "voltra-output"
+version = "0.1.0"
+dependencies = [
+ "voltra-core",
 ]
 
 [[package]]

@@ -14,6 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 voltra-core = { workspace = true }
+voltra-output = { workspace = true }
+voltra-render = { workspace = true }
+voltra-sources = { workspace = true }
 
 anyhow = { workspace = true }
 clap = { workspace = true }
