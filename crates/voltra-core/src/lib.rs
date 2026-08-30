@@ -18,12 +18,16 @@
 // without catching a realistic mistake, so the pedantic lint is waived here.
 #![allow(clippy::must_use_candidate)]
 
+pub mod color;
+pub mod convert;
 mod error;
 pub mod frame;
 pub mod math;
 pub mod pixel;
 pub mod time;
 
+pub use color::{ColorRange, ColorSpace, ColorSpec, RgbToYuv};
+pub use convert::rgb_to_yuv;
 pub use error::{Error, Result};
 pub use frame::{FrameSize, PLANE_ALIGNMENT, Plane, VideoFrame};
 pub use math::{Affine, Anchor, BoundsMode, Crop, Placement, Rect, Transform, Vec2};

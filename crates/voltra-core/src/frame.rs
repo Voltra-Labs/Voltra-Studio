@@ -274,6 +274,31 @@ impl VideoFrame {
         )
     }
 
+    /// Mutable access to every plane at once.
+    ///
+    /// Absent planes come back as empty slices. Converting to a planar format
+    /// needs to write luma and chroma in the same pass — without this the source
+    /// would have to be walked twice, which at 1080p60 costs milliseconds per
+    /// second for nothing.
+    pub fn planes_mut(&mut self) -> [&mut [u8]; MAX_PLANES] {
+        let layouts = self.planes;
+        let count = self.plane_count;
+        let mut out: [&mut [u8]; MAX_PLANES] = [&mut [], &mut [], &mut []];
+        let mut rest: &mut [u8] = &mut self.data;
+        let mut consumed = 0usize;
+
+        for (slot, plane) in out.iter_mut().zip(layouts).take(count) {
+            // Planes are laid out in ascending order with alignment padding in
+            // between, so each split is disjoint from the last.
+            let (_padding, tail) = rest.split_at_mut(plane.offset() - consumed);
+            let (body, tail) = tail.split_at_mut(plane.byte_len());
+            *slot = body;
+            rest = tail;
+            consumed = plane.offset() + plane.byte_len();
+        }
+        out
+    }
+
     /// The whole buffer, every plane contiguous.
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
