@@ -238,6 +238,17 @@ cargo test --workspace
   `perf(audio): ...`, `docs: ...`, `test: ...`, `chore: ...`, `refactor: ...`.
 - Un commit = un paso del plan. Mensaje en inglés, cuerpo explicando el *por
   qué* cuando no sea evidente.
+- **Sin metadatos de herramienta en el historial.** Ni en commits ni en pull
+  requests se escriben remolques de atribución ni enlaces de sesión:
+
+  - `Co-Authored-By:` de asistentes o bots.
+  - `Claude-Session:`, `Generated with ...` y cualquier enlace a una sesión.
+  - Identificadores de modelo (`claude-opus-5`, `Opus 5`, …) en el mensaje.
+
+  El historial cuenta *qué cambió y por qué*, no con qué se escribió. Un enlace
+  de sesión además caduca y apunta a algo que solo su autor puede abrir, así que
+  como referencia no vale nada. Si un asistente añade estos remolques por
+  omisión, se quitan antes del commit.
 - No se sube nada generado (`/target`, capturas, binarios). `assets/` solo
   ficheros pequeños necesarios para tests.
 
