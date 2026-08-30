@@ -1,7 +1,7 @@
 # 009 — Salida Y4M
 
 - **Fase:** 2
-- **Estado:** en curso
+- **Estado:** completado (2026-08-30) — ver Resultado
 
 ## Objetivo
 
@@ -173,3 +173,76 @@ rompió el compositor y eso está documentado en `docs/PERFORMANCE.md` §3.4.
 - **Tentación de meter escalado de salida aquí.** OBS reescala antes de
   convertir y el plan 008 lo señaló como el arreglo barato de la deuda §3.1.
   Es un paso propio, con su medición: se anota, no se cuela.
+
+## Resultado
+
+Puerta de calidad en verde: **155 tests** (87 en `voltra-core`, 15 en
+`voltra-sources`, 14 imágenes doradas, 12 + 2 en `voltra-output`, 9 + 7 en
+`voltra-cli`, 9 doctests). Sube desde los 124 del plan 008.
+
+**El criterio de aceptación se cumple: el fichero se ve.** Se decodificó la
+salida con un lector independiente escrito para la ocasión y se convirtió a PNG:
+las cuatro barras orbitan, giran, laten, se recortan contra los cuatro bordes y
+el panel translúcido se ve a través de las dos barras con alfa. Los colores
+salen donde deben, que es la comprobación de que el conversor del plan 004 y el
+orden de planos son correctos.
+
+### Lo que quedó hecho
+
+- Crate `voltra-output` con `Y4mWriter`, `Y4mParams` y `Y4mInterlacing`.
+  `I420` → `C420jpeg`, `Y8` → `Cmono`; el resto se rechaza en la construcción.
+- `voltra render` con `--size`, `--fps`, `--frames`, `--background`, `--filter`,
+  `--full-range` y `-o -` para tubería.
+- Escena de demostración animada, determinista y construida solo con
+  `ColorSource`.
+- Métricas por etapa —componer, convertir, escribir— por stderr.
+
+### Cifras, perfil `release`, 60 frames
+
+| Caso | Componer | Convertir | Escribir | Total |
+|---|---|---|---|---|
+| 720p, bilineal, a fichero | 8,00 ms | 1,89 ms | 0,84 ms | **10,7 ms** |
+| 1080p, bilineal, a fichero | 17,85 ms | 4,20 ms | 3,91 ms | **25,96 ms** |
+| 1080p, bilineal, a `/dev/null` | 17,92 ms | 4,25 ms | 0,004 ms | 22,18 ms |
+| 1080p, vecino cercano, a fichero | 8,46 ms | 4,09 ms | 0,79 ms | **13,33 ms** |
+
+Tres lecturas que salen de ahí:
+
+1. **Escribir Y4M a disco cuesta 3,9 ms por frame a 1080p**, el 23 % del
+   presupuesto. Contra `/dev/null` son 4 µs, así que es disco, no CPU: son los
+   187 MB/s que pide el formato. Y4M es para desarrollo y tuberías, no para
+   grabar; la fase 4 existe por esto.
+2. **La conversión cuesta 4,2 ms**, que corrobora desde el pipeline completo el
+   25 % del presupuesto que midió el plan 004 con `criterion`. Dos métodos
+   independientes, el mismo número.
+3. **El filtro de escalado domina la composición**: 17,9 ms bilineal contra
+   8,5 ms vecino cercano, 2,1×. Es la misma proporción que midió el plan 008 en
+   aislamiento, ahora sobre una escena real.
+
+Con vecino cercano, 1080p60 queda a 13,3 ms de los 16,6 disponibles: **el
+pipeline entero cabe en el presupuesto**, aunque sea en el modo de menor
+calidad y sin captura ni encoding compitiendo por el tiempo. Con bilineal no
+cabe. Nada de esto cambia el veredicto del plan 008: la GPU sigue siendo el
+requisito.
+
+### Un fallo que encontró un test
+
+El subscriber de `tracing` escribe en stdout por omisión. Con `-o -`, una sola
+línea de log en medio del vídeo lo hace ilegible. El test de extremo a extremo
+lo detectó a la primera; el arreglo es una línea (`.with_writer(std::io::stderr)`)
+y es la razón por la que los tests ejecutan el binario de verdad en vez de
+llamar a `run()`.
+
+## Desviaciones respecto al plan
+
+- **`Y4mParams` no lleva `#[non_exhaustive]`.** Ese atributo prohíbe justo la
+  expresión `Y4mParams { fps, ..Default::default() }` desde fuera de la crate,
+  que es la única forma cómoda de construir una estructura de ajustes. Queda
+  documentado en el propio tipo.
+- **Se añadió `--full-range`**, no previsto. Sale casi gratis y convierte la
+  mejora nº 2 del plan —"el rango nunca falta porque lo conocemos"— en algo que
+  un test puede comprobar de verdad en vez de una afirmación.
+- **El aviso de BT.601 por debajo de 720 líneas** tampoco estaba previsto. Y4M
+  no tiene campo de matriz y los reproductores lo deducen de la altura, así que
+  convertir con BT.709 a 480p produce un fichero que se ve mal por un motivo que
+  no está en ninguna parte. Ahora lo dice.

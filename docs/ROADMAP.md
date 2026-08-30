@@ -16,22 +16,36 @@ Fases del producto. Cada fase se descompone en pasos pequeños con su plan en
 
 ## Próximos pasos comprometidos
 
-Secuencia acordada, en este orden y sin desviarse. El objetivo es llegar al
-**primer hito visible** —un fichero de vídeo reproducible— en tres pasos.
+**La secuencia 007–009 está cerrada.** El objetivo era llegar al primer hito
+visible en tres pasos, y se llegó.
 
-| Plan | Qué deja funcionando | Por qué ahora |
+| Plan | Qué dejó funcionando | Estado |
 |---|---|---|
-| **007** | Grafo de escena: `Scene`, `SceneItem`, orden de capas, visibilidad, bloqueo, anidamiento | Es el pegamento entre geometría (002), frames (003) y fuentes (006). Sin bucles calientes |
-| **008** | Compositor CPU: escena → frame, mezcla alfa, muestreo por mapeo inverso, imágenes doradas | El paso gordo de la fase 2. Valida si las decisiones de los planes 002–006 estaban bien tomadas |
-| **009** | Salida Y4M desde `voltra render` | **Primer hito visible.** Y4M es vídeo crudo con cabecera de texto: veinte líneas y sin dependencias. A partir de aquí cada paso se puede *ver*, no solo testear |
+| **007** | Grafo de escena: `Scene`, `SceneItem`, orden de capas, visibilidad, bloqueo | Hecho |
+| **008** | Compositor CPU: escena → frame, mezcla alfa, muestreo por mapeo inverso, imágenes doradas | Hecho, con el criterio de rendimiento incumplido y documentado |
+| **009** | Salida Y4M desde `voltra render` | **Hecho. Primer hito visible.** |
 
-Después de 009, por orden de utilidad: audio (fase 3), encoding real (fase 4),
-captura con PipeWire (fase 5) —el momento en que el programa sirve para algo—,
-streaming (fase 6) e interfaz (fase 7).
+Desde aquí, cada paso se puede *ver*:
 
-Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`. La más gorda —la
-conversión de color, 25 % del presupuesto— tiene su arreglo más barato dentro
-del plan 008: **escalar antes de convertir**, como hace OBS, medido en 2,2×.
+```bash
+voltra render -o - --frames 300 | ffplay -
+voltra render -o demo.y4m --size 1920x1080 --frames 600
+```
+
+### Qué viene ahora
+
+La fase 2 **no está cerrada**: su criterio de salida es 1080p60 dentro del
+presupuesto, y el plan 008 midió que el camino CPU está 8× por encima
+(`docs/PERFORMANCE.md` §3.4). El paso que cierra la fase es el **backend `wgpu`
+del ADR 0001**, detrás del mismo trait `Compositor` y validado contra las
+imágenes doradas que el camino CPU ya produce. Es el siguiente plan por escribir.
+
+Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
+también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
+momento en que el programa sirve para algo, streaming (fase 6) e interfaz
+(fase 7).
+
+Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 
 ## Fase 2 — Compositor
 - Composición escena → frame con transformaciones, recorte, mezcla alfa y

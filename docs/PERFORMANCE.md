@@ -8,6 +8,9 @@ Reproducir todo:
 
 ```bash
 cargo bench -p voltra-core
+cargo bench -p voltra-render
+# El pipeline completo se mide solo: rendering y métricas por etapa a stderr.
+cargo run --release -p voltra-cli -- render -o /dev/null --size 1920x1080 --frames 60
 ```
 
 Máquina de referencia de las cifras actuales: x86_64, 4 hilos, contenedor Linux,
@@ -45,6 +48,15 @@ conversión, codificación y mux. El reparto objetivo da ~4 ms a la composición
 | **BGRA → NV12, 1080p** | **4,11 ms** | **24,8 %** | 004 |
 | BGRA → I420, 1080p | 4,18 ms | 25,2 % | 004 |
 | BGRA → NV12, 720p | 1,87 ms | 11,3 % | 004 |
+| Escribir un frame I420 1080p a Y4M, a fichero | 3,91 ms | 23,5 % | 009 |
+| Escribir un frame I420 1080p a Y4M, a `/dev/null` | 4 µs | 0,02 % | 009 |
+| **Pipeline completo 1080p60, bilineal, a fichero** | **25,96 ms** | **156 %** | 009 |
+| Pipeline completo 1080p60, vecino cercano, a fichero | 13,33 ms | 80 % | 009 |
+| Pipeline completo 720p60, bilineal, a fichero | 10,72 ms | 64 % | 009 |
+
+Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
+la escena de demostración de `voltra render`, no de un microbenchmark. Es la
+primera medida de extremo a extremo del proyecto.
 
 ---
 
@@ -135,6 +147,22 @@ encima. El ADR 0001 queda confirmado con datos: **la GPU no es una mejora
 opcional del compositor, es un requisito**. El camino CPU cumple su papel —
 correcto, portable, verificable en CI, y oráculo de las imágenes doradas con las
 que se validará el backend acelerado— y ahí se queda.
+
+### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
+
+**Síntoma.** Escribir un frame I420 1080p a un fichero cuesta 3,91 ms. A
+`/dev/null` cuesta 4 µs.
+
+**Causa.** No es CPU: es el ancho de banda que pide el formato. Y4M es vídeo
+crudo, y 1080p60 en 4:2:0 son **187 MB/s** sostenidos. El escritor ya hace lo
+único que puede hacer —un `write_all` por plano, sin asignar, sin copiar y sin
+emitir el relleno del stride—; lo que queda es el disco.
+
+**Decisión.** No se arregla, porque no está roto. Y4M es un formato de
+desarrollo y de tubería (`voltra render -o - | x264 --demuxer y4m -`), y en
+tubería el coste no aparece. Grabar de verdad es la **fase 4**: un codec baja
+esos 187 MB/s a unos pocos MB/s, y ese es el arreglo. La entrada existe para que
+nadie confunda el coste del formato con un problema del escritor.
 
 ### 3.3 Un bucle de lectura mal formado va 5× más lento que la memoria
 
