@@ -247,8 +247,12 @@ demás se crearán cuando haya código que meter en ellas.
 colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
 benchmarks de referencia. y conversión de color RGB→YUV (plan 004). pool de frames (plan 005) y los traits de fuente con la
 primera fuente real (plan 006) y el grafo de escena (plan 007). Siguiente: el
-compositor CPU (plan 008) y la salida Y4M (plan 009), que es el primer hito
-visible. Secuencia comprometida en `docs/ROADMAP.md`.
+grafo de escena (plan 007) y el compositor CPU (plan 008). Siguiente: la salida
+Y4M (plan 009), el primer hito visible. Secuencia en `docs/ROADMAP.md`.
+
+El plan 008 dejó un veredicto con datos: el compositor CPU está 8× por encima de
+su presupuesto y **la GPU del ADR 0001 es un requisito, no una mejora**. Ver
+`docs/PERFORMANCE.md` §3.4.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

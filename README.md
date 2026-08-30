@@ -44,6 +44,7 @@ CI runs the same three commands, plus a release build, an MSRV check and
 |---|---|
 | `voltra-core` | Shared vocabulary and invariants. No OS dependencies, builds anywhere. |
 | `voltra-sources` | Built-in sources and filters. No OS dependencies either, so CI can run them. |
+| `voltra-render` | Compositing: scene in, frame out. CPU reference path today. |
 | `voltra-cli` | Headless front-end: what CI runs and what benchmarks drive. |
 
 Crates are added when they are used, not up front. The full target layout is in

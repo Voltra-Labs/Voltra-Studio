@@ -1,7 +1,7 @@
 # 008 — Compositor CPU
 
 - **Fase:** 2
-- **Estado:** propuesto
+- **Estado:** completado con desviación (2026-08-30) — ver Resultado
 
 ## Objetivo
 
@@ -117,6 +117,72 @@ matrices escritas a mano en el propio test:
 
 Criterio de aceptación: **escena de 5 items a 1080p por debajo de 4 ms**, que es
 el presupuesto que CLAUDE.md §4 reserva a la composición.
+
+## Resultado
+
+Puerta de calidad en verde: **124 tests** (87 en `voltra-core`, 15 en
+`voltra-sources`, 14 imágenes doradas del compositor, 1 en `voltra-cli`, 7
+doctests). Funciona todo lo previsto: siete modos de mezcla, dos filtros,
+recorte, rotación, orden de capas, y los casos degenerados reportados en vez de
+dibujados mal.
+
+### El criterio de aceptación NO se cumple, por mucho
+
+Escena de 5 items a 1080p: **33,0 ms**. El presupuesto era 4 ms. Ocho veces por
+encima.
+
+### Cuatro rondas de optimización, todas medidas
+
+| Ronda | Hipótesis | Resultado (1 capa a pantalla completa) |
+|---|---|---|
+| Punto de partida | — | 110,2 ms |
+| 1 | Las conversiones `f32 → i32` del bucle interno son saturantes en Rust y compilan a comparación + selección; el muestreo bilineal hace dieciséis por píxel. **Coordenadas en punto fijo 16.16.** | 51,4 ms (**−54 %**) |
+| 2 | El `clamp` con `if/else if/else` mete dieciséis ramas por píxel. **`clamp` sin ramas** + atajo para píxeles opacos (premultiplicar por 255 es identidad; `Normal` opaco es una copia). | 36,9 ms (**−28 %**) |
+| 3 | A escala 1:1 el bilineal lee cuatro téxeles cuyos pesos resuelven a uno solo. **Detectar el mapeo alineado a píxel y sustituir por vecino cercano**, que es *bit a bit idéntico*, no un cambio de calidad. | 11,5 ms (**−69 %**) |
+
+Mejora acumulada: **9,6×**. Los tests doradas pasaron sin cambios en las tres
+rondas, que es lo que permite optimizar sin miedo.
+
+### Cifras finales
+
+| Caso, 1080p | Coste | Presupuesto (4 ms) |
+|---|---|---|
+| Una capa a pantalla completa, 1:1 opaca | 11,5 ms | 2,9× |
+| **Escena de 5 items (criterio)** | **33,0 ms** | **8,3×** |
+| Escalado a pantalla completa, vecino cercano | 10,8 ms | 2,7× |
+| Escalado a pantalla completa, bilineal | 36,9 ms | 9,2× |
+
+### El veredicto, y por qué importa
+
+Una capa opaca a escala 1:1 es **semánticamente una copia de memoria**. Copiar
+esos 8,29 MB cuesta 410 µs (plan 003). Nosotros tardamos 11,5 ms: **28 veces
+más** que el `memcpy` equivalente. Ese factor es la maquinaria por píxel —
+comprobación de cobertura, sujeción de coordenadas, lectura byte a byte con
+índices en tiempo de ejecución, mezcla y escritura— y no desaparece afinando.
+
+**Esto confirma el ADR 0001 con datos, no con intuición: la GPU no es una
+mejora opcional, es un requisito.** El camino CPU cumple lo que el ADR le pide
+—ser correcto, portable y verificable en CI— y ahí se queda. Lo que no puede es
+ser el camino principal a 1080p60.
+
+Lo que queda sobre la mesa para CPU, en `docs/PERFORMANCE.md`, por si alguna vez
+hace falta un respaldo usable: copia directa de filas para el caso alineado,
+opaco y `Normal`; orden de canales como parámetro de tipo para que la lectura de
+píxel sea una sola palabra; y SIMD. Ninguna se hace ahora: no cambian el
+veredicto y la GPU las deja irrelevantes.
+
+## Desviaciones respecto al plan
+
+- El criterio de 4 ms no se cumple (arriba, con todo el detalle).
+- Se implementó el atajo de 1:1 que el plan listaba como *riesgo* de
+  optimización prematura. La diferencia es que llegó **después** de medir el
+  caso general, con una mejora medida del 69 % y siendo bit a bit idéntico. La
+  regla de CLAUDE.md §4.8 es "no optimices sin perfil previo", y hubo perfil.
+- El muestreo pasó a punto fijo, no previsto: además de ser el 54 % de la
+  primera ronda, un paso entero no acumula error, cosa que el `f32` no puede
+  prometer.
+- `RGBA8` se soporta además de `BGRA8`, con un swizzle en la lectura. Estaba
+  planteado como "no soportado" y salía casi gratis.
 
 ## Riesgos
 

@@ -39,6 +39,9 @@ conversión, codificación y mux. El reparto objetivo da ~4 ms a la composición
 | Asignar frame I420 1080p | 133 µs | 0,8 % | 003 |
 | Escribir todas las filas, BGRA 1080p | 410 µs | 20,2 GB/s | 003 |
 | Leer todas las filas, BGRA 1080p | 1,99 ms | 4,2 GB/s | 003 |
+| **Componer escena de 5 items, 1080p** | **33,0 ms** | **199 %** | 008 |
+| Componer una capa a pantalla completa 1:1 | 11,5 ms | 69 % | 008 |
+| Componer escalado a pantalla completa, bilineal | 36,9 ms | 222 % | 008 |
 | **BGRA → NV12, 1080p** | **4,11 ms** | **24,8 %** | 004 |
 | BGRA → I420, 1080p | 4,18 ms | 25,2 % | 004 |
 | BGRA → NV12, 720p | 1,87 ms | 11,3 % | 004 |
@@ -99,6 +102,39 @@ ambos lo hacen al ancho de banda de la memoria. **El ahorro del pool no viene de
 reutilizar la asignación sino de no escribir el búfer.** Toda etapa del pipeline
 debe sobrescribir el frame completo; la que pinte encima de lo anterior pierde
 el beneficio entero.
+
+### 3.4 El compositor CPU está 8× por encima de su presupuesto
+
+**Síntoma.** Una escena de 5 items a 1080p tarda 33,0 ms; el presupuesto de
+composición son 4 ms. Incluso una sola capa opaca a escala 1:1 cuesta 11,5 ms.
+
+**La medida que lo pone en contexto.** Esa capa 1:1 opaca es semánticamente una
+copia de memoria. El `memcpy` de sus 8,29 MB cuesta 410 µs (§2). Estamos **28×
+por encima del `memcpy` equivalente**.
+
+**Ya aplicado — 9,6× acumulado**, en tres rondas medidas (detalle en el plan
+008):
+
+| Cambio | Ganancia |
+|---|---|
+| Coordenadas en punto fijo 16.16 en vez de `f32` con casts saturantes | −54 % |
+| `clamp` sin ramas y atajo para píxeles opacos | −28 % |
+| Sustituir bilineal por vecino cercano cuando el mapeo es 1:1 (bit a bit idéntico) | −69 % |
+
+**Qué queda, si alguna vez hace falta un respaldo CPU usable:**
+
+| Opción | Ganancia estimada | Coste |
+|---|---|---|
+| Copia directa de filas cuando el item está alineado, es opaco y usa `Normal` | La capa de fondo pasaría de 11,5 ms a ~0,5 ms | ~20 líneas y sus tests |
+| Orden de canales como parámetro de tipo, para leer el píxel de una palabra en vez de cuatro bytes con índices en tiempo de ejecución | Sin medir; los índices variables impiden la carga de 32 bits | Duplica las instanciaciones a 28 |
+| SIMD explícito | 2–4× | `unsafe`, plan propio |
+
+**Decisión.** Ninguna se hace ahora. **Ninguna cambia el veredicto**: aunque la
+copia de filas dejara la escena de 5 items en ~22 ms, seguiría siendo 5× por
+encima. El ADR 0001 queda confirmado con datos: **la GPU no es una mejora
+opcional del compositor, es un requisito**. El camino CPU cumple su papel —
+correcto, portable, verificable en CI, y oráculo de las imágenes doradas con las
+que se validará el backend acelerado— y ahí se queda.
 
 ### 3.3 Un bucle de lectura mal formado va 5× más lento que la memoria
 

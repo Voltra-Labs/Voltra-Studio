@@ -594,6 +594,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "voltra-render"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "voltra-core",
+]
+
+[[package]]
 name = "voltra-sources"
 version = "0.1.0"
 dependencies = [
