@@ -12,6 +12,12 @@ authors.workspace = true
 name = "voltra"
 path = "src/main.rs"
 
+[features]
+default = []
+# Enables `voltra render --gpu`. Off by default so the default build needs no
+# graphics stack at all.
+gpu = ["voltra-render/gpu"]
+
 [dependencies]
 voltra-core = { workspace = true }
 voltra-output = { workspace = true }

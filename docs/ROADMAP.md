@@ -16,8 +16,8 @@ Fases del producto. Cada fase se descompone en pasos pequeños con su plan en
 
 ## Próximos pasos comprometidos
 
-**La secuencia 007–009 está cerrada.** El objetivo era llegar al primer hito
-visible en tres pasos, y se llegó.
+**La secuencia 007–010 está cerrada.** El objetivo era llegar al primer hito
+visible en tres pasos, y se llegó; el cuarto trajo el backend acelerado.
 
 | Plan | Qué dejó funcionando | Estado |
 |---|---|---|
@@ -32,13 +32,19 @@ voltra render -o - --frames 300 | ffplay -
 voltra render -o demo.y4m --size 1920x1080 --frames 600
 ```
 
+| **010** | Backend GPU `wgpu` tras el mismo trait, más `voltra render --gpu` | Hecho, verificado contra el camino CPU |
+
 ### Qué viene ahora
 
-La fase 2 **no está cerrada**: su criterio de salida es 1080p60 dentro del
-presupuesto, y el plan 008 midió que el camino CPU está 8× por encima
-(`docs/PERFORMANCE.md` §3.4). El paso que cierra la fase es el **backend `wgpu`
-del ADR 0001**, detrás del mismo trait `Compositor` y validado contra las
-imágenes doradas que el camino CPU ya produce. Es el siguiente plan por escribir.
+La fase 2 **sigue sin cerrarse, y por un motivo concreto**: su criterio de
+salida es 1080p60 dentro del presupuesto, y eso es una medición. El backend GPU
+ya existe y es correcto (plan 010), pero se ha verificado sobre un rasterizador
+software, así que **no hay ninguna cifra de GPU** (`docs/PERFORMANCE.md` §3.6).
+Cerrar la fase 2 no requiere escribir código: requiere una máquina con GPU y una
+tarde.
+
+Mientras tanto, el siguiente plan por escribir es el de **audio (fase 3)**, que
+no depende de nada de lo anterior.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el

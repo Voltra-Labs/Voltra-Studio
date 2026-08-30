@@ -58,6 +58,51 @@ pub struct Args {
     /// Convert to full range instead of the broadcast 16–235.
     #[arg(long)]
     full_range: bool,
+
+    /// Composite on the GPU instead of the CPU.
+    ///
+    /// Requires a build with `--features gpu`; without it the flag is accepted
+    /// and refused with an explanation, which beats an "unknown argument" that
+    /// does not say the feature exists.
+    #[arg(long)]
+    gpu: bool,
+}
+
+/// Build the compositor the arguments ask for.
+///
+/// Boxed because the two backends are different types behind one trait, which
+/// is exactly what ADR 0001 designed for. The dynamic call happens once per
+/// frame, not once per pixel, so it costs nothing that can be measured.
+fn open_compositor(args: &Args) -> Result<Box<dyn Compositor>> {
+    if args.gpu {
+        #[cfg(feature = "gpu")]
+        {
+            let mut compositor = voltra_render::GpuCompositor::new(args.size)
+                .context("opening the GPU compositor")?;
+            compositor.set_background(args.background);
+            let info = compositor.info().clone();
+            if info.hardware {
+                tracing::info!(adapter = %info, "compositing on the GPU");
+            } else {
+                // A software rasteriser runs the same code and produces the
+                // same pixels, but any timing taken on one says nothing about a
+                // GPU. Saying so beats letting the summary be misread.
+                tracing::warn!(
+                    adapter = %info,
+                    "this adapter is a software rasteriser: the timings below are not GPU timings"
+                );
+            }
+            return Ok(Box::new(compositor));
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            anyhow::bail!("this build has no GPU backend; rebuild with `--features gpu`");
+        }
+    }
+
+    let mut compositor = CpuCompositor::new(args.size).context("building the compositor")?;
+    compositor.set_background(args.background);
+    Ok(Box::new(compositor))
 }
 
 /// Render the demonstration scene and write it out.
@@ -95,8 +140,7 @@ pub fn run(args: &Args) -> Result<()> {
         .context("writing the Y4M header")?;
 
     let mut demo = DemoScene::new(args.size, args.filter).context("building the demo scene")?;
-    let mut compositor = CpuCompositor::new(args.size).context("building the compositor")?;
-    compositor.set_background(args.background);
+    let mut compositor = open_compositor(args)?;
 
     // Allocated once and rewritten every frame. Allocating a 1080p I420 frame
     // costs 133 µs (docs/PERFORMANCE.md §2); doing it per frame would be 0.8 %

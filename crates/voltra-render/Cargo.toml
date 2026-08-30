@@ -8,8 +8,23 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+# The accelerated backend of ADR 0001. Off by default: `cargo test --workspace`
+# has to keep running in a headless container with no GPU (CLAUDE.md §3).
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
+
 [dependencies]
 voltra-core = { workspace = true }
+
+wgpu = { version = "30", optional = true, default-features = false, features = [
+    "wgsl",
+    "vulkan",
+    "metal",
+    "dx12",
+] }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.7", default-features = false, features = [
@@ -19,6 +34,10 @@ criterion = { version = "0.7", default-features = false, features = [
 [[bench]]
 name = "composite"
 harness = false
+
+[[test]]
+name = "gpu_parity"
+required-features = ["gpu"]
 
 [lints]
 workspace = true

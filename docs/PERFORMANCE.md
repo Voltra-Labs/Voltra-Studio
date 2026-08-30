@@ -148,6 +148,31 @@ opcional del compositor, es un requisito**. El camino CPU cumple su papel —
 correcto, portable, verificable en CI, y oráculo de las imágenes doradas con las
 que se validará el backend acelerado— y ahí se queda.
 
+### 3.6 El backend GPU existe, pero nadie lo ha medido — PENDIENTE DE HARDWARE
+
+**Estado.** El plan 010 dejó `GpuCompositor` funcionando y verificado contra el
+camino CPU: quince tests de paridad, exactitud donde puede haberla y tolerancia
+justificada donde no.
+
+**Lo que no hay: un solo número.** La verificación corre sobre **lavapipe**, el
+rasterizador software de Mesa. Es el mismo código y los mismos píxeles, pero lo
+ejecuta una CPU. Un tiempo medido ahí describe a llvmpipe y no dice nada sobre
+una GPU, así que no se anota ninguno: sería exactamente la "opinión disfrazada
+de optimización" que prohíbe §4.8.
+
+**Qué hace falta para cerrar §3.4 y la fase 2.** Correr en hardware real, con
+esta escena y este presupuesto:
+
+```bash
+sudo apt-get install -y mesa-vulkan-drivers   # solo para CI sin GPU
+cargo run --release -p voltra-cli --features gpu -- \
+    render -o /dev/null --size 1920x1080 --frames 300 --gpu
+```
+
+El resumen avisa por stderr cuando el adaptador es software, para que nadie
+copie aquí un número que no lo es. La primera composición incluye la compilación
+de los pipelines, así que se mide a partir de la segunda.
+
 ### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
 
 **Síntoma.** Escribir un frame I420 1080p a un fichero cuesta 3,91 ms. A
