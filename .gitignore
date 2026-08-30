@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+*.y4m
+*.wav
+*.mp4
+.DS_Store
+/out
