@@ -246,7 +246,9 @@ demás se crearán cuando haya código que meter en ellas.
 **Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
 colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
 benchmarks de referencia. y conversión de color RGB→YUV (plan 004). pool de frames (plan 005) y los traits de fuente con la
-primera fuente real (plan 006). Siguiente: el grafo de escena.
+primera fuente real (plan 006) y el grafo de escena (plan 007). Siguiente: el
+compositor CPU (plan 008) y la salida Y4M (plan 009), que es el primer hito
+visible. Secuencia comprometida en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

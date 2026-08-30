@@ -1,7 +1,7 @@
 # 007 — Grafo de escena
 
 - **Fase:** 1 → 2
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -129,6 +129,40 @@ más barato que preguntar por item dentro del bucle de dibujo.
 
 Sin benchmark: no hay bucle por píxel aquí. El coste de recorrer la escena se
 medirá en el plan 008, donde por fin significa algo.
+
+## Resultado
+
+Puerta de calidad en verde: **109 tests** (87 en `voltra-core`, 15 en
+`voltra-sources`, 1 en `voltra-cli`, 6 doctests).
+
+`Scene` y `SceneItem` completos, con `BlendMode` (los siete de OBS) y
+`ScaleFilter` (los seis). Las operaciones de reordenación se comportan como
+espera quien pulsa un botón: `raise` sobre la capa superior no hace nada, no
+envuelve ni falla.
+
+Sin benchmark, como estaba previsto: no hay bucle por píxel en este paso. El
+coste de recorrer la escena se medirá en el plan 008, donde significará algo.
+
+## Desviaciones respecto al plan
+
+- Ninguna. El diseño salió tal cual.
+- `items()` y `visible_items()` devuelven `DoubleEndedIterator` en vez de un
+  iterador simple: la interfaz listará las capas de arriba abajo, y `.rev()`
+  gratis evita que alguien acabe copiando a un `Vec` para darle la vuelta.
+- Los campos editables de `SceneItem` (`transform`, `visible`, `locked`,
+  `blend`, `scale_filter`) son públicos; `id` y `source` son privados con
+  acceso de solo lectura. La identidad y el vínculo con la fuente son
+  invariantes de la escena; el resto son ajustes del usuario y envolverlos en
+  parejas de getters y setters solo añadiría ruido.
+
+## Pendiente que este paso deja abierto
+
+**Detección de ciclos.** Nada impide todavía que una escena acabe conteniéndose
+a sí misma, lo que haría recursión infinita en el compositor. `Scene::references`
+es el ladrillo, pero la comprobación necesita resolver `SourceId` → fuente, o
+sea el registro. **El plan 008 no puede resolver `SourceId` a ciegas**: o llega
+antes el registro con su comprobación, o el compositor lleva un límite de
+profundidad explícito.
 
 ## Riesgos
 

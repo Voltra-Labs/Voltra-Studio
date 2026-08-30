@@ -25,6 +25,7 @@ pub mod frame;
 pub mod math;
 pub mod pixel;
 pub mod pool;
+pub mod scene;
 pub mod source;
 pub mod time;
 
@@ -35,6 +36,7 @@ pub use frame::{FrameSize, PLANE_ALIGNMENT, Plane, VideoFrame};
 pub use math::{Affine, Anchor, BoundsMode, Crop, Placement, Rect, Transform, Vec2};
 pub use pixel::{MAX_PLANES, PixelFormat};
 pub use pool::{FramePool, PoolStats};
+pub use scene::{BlendMode, ScaleFilter, Scene, SceneItem, SceneItemId};
 pub use source::{
     Source, SourceCapabilities, SourceId, SourceIdGenerator, SourceType, TickContext, VideoFilter,
     VideoSource,
