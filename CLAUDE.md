@@ -265,23 +265,25 @@ RGB→YUV (plan 004), pool de frames (plan 005), los traits de fuente con la
 primera fuente real (plan 006) y el grafo de escena (plan 007), todo con
 benchmarks de referencia.
 
-**Fase 2 en curso.** El compositor CPU está hecho (plan 008) y la salida Y4M
-también (plan 009): **`voltra render` produce un fichero de vídeo que se ve**, y
-es el primer hito visible del proyecto.
+**Fase 2 en curso.** Compositor CPU (plan 008), salida Y4M (plan 009) y backend
+GPU `wgpu` (plan 010). **`voltra render` produce un fichero de vídeo que se ve**,
+por CPU o por GPU:
 
 ```bash
 voltra render -o - --frames 300 | ffplay -
+cargo run --release -p voltra-cli --features gpu -- render -o demo.y4m --gpu
 ```
 
 Crates vivas: `voltra-core`, `voltra-render`, `voltra-sources`, `voltra-output`
 y `voltra-cli`; las demás se crearán cuando haya código que meter en ellas.
 
-**Lo que falta para cerrar la fase 2 es el backend GPU.** El plan 008 dejó un
-veredicto con datos: el compositor CPU está 8× por encima de su presupuesto y
-**la GPU del ADR 0001 es un requisito, no una mejora** (`docs/PERFORMANCE.md`
-§3.4). El plan 009 lo confirmó desde el pipeline completo: 1080p60 con muestreo
-bilineal cuesta 25,96 ms de los 16,6 disponibles. Siguiente paso: el plan del
-backend `wgpu`. Secuencia en `docs/ROADMAP.md`.
+**La fase 2 no se cierra por falta de una medición, no de código.** Su criterio
+de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
+(§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
+sobre un rasterizador software: **no hay ninguna cifra de GPU**
+(`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
+Mientras tanto el siguiente plan es el de audio (fase 3). Secuencia en
+`docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -294,4 +296,5 @@ Decisiones ya tomadas (ver `docs/adr/`):
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
+Composición acelerada: `docs/references/gpu-compositing.md`.
 Fases del producto: `docs/ROADMAP.md`.
