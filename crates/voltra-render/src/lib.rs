@@ -11,6 +11,10 @@
 
 mod blend;
 mod compositor;
+#[cfg(feature = "gpu")]
+mod gpu;
 mod sample;
 
 pub use compositor::{CompositeStats, Compositor, CpuCompositor, FrameProvider};
+#[cfg(feature = "gpu")]
+pub use gpu::{GpuCompositor, GpuContext, GpuInfo};

@@ -42,6 +42,33 @@ jobs:
       - name: Release build
         run: cargo build --workspace --release
 
+  gpu:
+    name: GPU backend (lavapipe)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # lavapipe is Mesa's software Vulkan rasteriser. It runs the same code
+      # path a real GPU would, so the parity suite verifies correctness on a
+      # runner with no graphics hardware. It says nothing about performance,
+      # and no timing is taken here.
+      - name: Install the software Vulkan driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+
+      - name: Lints
+        run: cargo clippy -p voltra-render --all-targets --features gpu -- -D warnings
+
+      - name: Parity against the CPU compositor
+        run: cargo test -p voltra-render --features gpu
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
