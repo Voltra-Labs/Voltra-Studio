@@ -48,6 +48,12 @@ CI runs the same three commands, plus a release build, an MSRV check and
 Crates are added when they are used, not up front. The full target layout is in
 [`CLAUDE.md`](CLAUDE.md) §2.
 
+## Performance
+
+Every measurement, and every piece of known performance debt, lives in
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) — including the experiments that
+did not work.
+
 ## How this project is built
 
 Small steps, each one planned before it is written. Plans live in

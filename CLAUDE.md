@@ -182,6 +182,9 @@ Reglas del hot path (bucle de render, mezcla de audio, callbacks de captura):
 10. **Métricas internas siempre encendidas:** tiempo de render, frames perdidos,
     frames saltados, retraso de encoder, ocupación de colas. Lo que no se mide,
     se degrada.
+11. **Todo número vive en `docs/PERFORMANCE.md`**, junto con la deuda de
+    rendimiento abierta y los experimentos que salieron mal. Un experimento
+    fallido sin documentar es tiempo que alguien volverá a perder.
 
 ---
 
