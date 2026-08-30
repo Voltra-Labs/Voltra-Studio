@@ -6,8 +6,9 @@
 //! and no capture devices. Platform code lives behind the traits declared here,
 //! never the other way round.
 //!
-//! At this stage the crate carries timing, placement geometry and the shared
-//! error type; frames, colour and the scene graph land in later steps.
+//! At this stage the crate carries timing, placement geometry, pixel formats
+//! and the CPU video frame; colour conversion and the scene graph land in later
+//! steps.
 
 // Panicking helpers are denied in library code (see CLAUDE.md §3) but free in
 // tests, where a failed assumption should fail the test loudly.
@@ -18,11 +19,15 @@
 #![allow(clippy::must_use_candidate)]
 
 mod error;
+pub mod frame;
 pub mod math;
+pub mod pixel;
 pub mod time;
 
 pub use error::{Error, Result};
+pub use frame::{FrameSize, PLANE_ALIGNMENT, Plane, VideoFrame};
 pub use math::{Affine, Anchor, BoundsMode, Crop, Placement, Rect, Transform, Vec2};
+pub use pixel::{MAX_PLANES, PixelFormat};
 pub use time::{Fps, Timestamp};
 
 /// The version of the Voltra Studio workspace this build came from.

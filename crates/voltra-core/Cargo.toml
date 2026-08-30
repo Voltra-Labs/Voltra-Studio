@@ -22,5 +22,9 @@ criterion = { version = "0.7", default-features = false, features = [
 name = "geometry"
 harness = false
 
+[[bench]]
+name = "frame"
+harness = false
+
 [lints]
 workspace = true

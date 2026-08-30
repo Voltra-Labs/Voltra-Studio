@@ -1,7 +1,7 @@
 # 003 — Formatos de píxel y `VideoFrame`
 
 - **Fase:** 1
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -134,6 +134,52 @@ prólogo.
 Criterio de aceptación: asignar un frame 1080p BGRA por debajo de **1 ms** (es
 memoria; el número real interesa como línea base para cuando llegue el pool, que
 debe dejarlo en cero).
+
+## Resultado
+
+Puerta de calidad en verde. 45 tests (43 unitarios en `voltra-core`, 1 en
+`voltra-cli`, 1 doctest).
+
+Benchmarks a 1080p (`cargo bench -p voltra-core --bench frame`):
+
+| Caso | Mediana | Lectura |
+|---|---|---|
+| Asignar frame BGRA (8,29 MB) | **387 µs** | 2,3 % del presupuesto de frame |
+| Asignar frame I420 (3,11 MB) | **133 µs** | ~43 µs/MB, o sea: es el puesta a cero |
+| Asignar frame NV12 | **143 µs** | — |
+| Leer todas las filas BGRA | **1,99 ms** | 4,2 GB/s |
+| Escribir todas las filas BGRA | **410 µs** | 20,2 GB/s |
+
+El criterio de aceptación (< 1 ms por asignación) se cumple, pero el número
+importante es otro: **asignar cuesta ~46 µs por megabyte y escala con el
+tamaño**, o sea que es el `vec![0; n]` tocando páginas. A 1080p60 son 23 ms por
+segundo de puro trabajo inútil. Justifica el pool del plan 005 con un número, no
+con una intuición.
+
+### Hallazgo: la forma del bucle de lectura importa cinco veces
+
+Leer 8,29 MB cuesta 1,99 ms (4,2 GB/s) mientras que escribirlos cuesta 410 µs
+(20,2 GB/s). La lectura no está limitada por la memoria: está limitada por la
+forma del bucle. `row.iter().copied().map(u64::from).sum()` acumula byte a byte
+en un único registro y crea una cadena de dependencias que impide vectorizar; el
+`fill()` de la escritura sí baja a instrucciones anchas.
+
+No se toca ahora —no toca en este paso y no hay consumidor todavía—, pero queda
+medido y anotado: **los bucles por píxel del plan 004 (conversión de color) y
+del compositor deben escribirse para vectorizar**, y aquí está el número que
+demuestra que la diferencia es de 5×, no cosmética.
+
+## Desviaciones respecto al plan
+
+- Ninguna en el diseño: `PixelFormat`, `VideoFrame` y la geometría derivada
+  salieron como estaban planteados.
+- `clippy::match_same_arms` obligó a fusionar ramas que se habían separado por
+  legibilidad. La fusión quedó bien: el comentario explica por qué la fila de
+  croma de NV12 mide lo mismo que la de luma, que era lo que las ramas separadas
+  intentaban decir.
+- El test de alineación usa 1918 px de ancho a propósito: es par (válido para
+  4:2:0) pero no múltiplo de 32, así que ningún plano queda alineado por
+  casualidad.
 
 ## Riesgos
 

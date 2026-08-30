@@ -239,8 +239,9 @@ en CI, y `voltra info` funciona. Crates vivas: `voltra-core` y `voltra-cli`; las
 demás se crearán cuando haya código que meter en ellas.
 
 **Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
-colocación (plan 002), con benchmarks de referencia. Siguiente: formatos de
-píxel y `Frame` (plan 003), y después el grafo de escena y los traits.
+colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
+benchmarks de referencia. Siguiente: conversión de color (plan 004), pool de
+frames (plan 005) y después el grafo de escena y los traits.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
