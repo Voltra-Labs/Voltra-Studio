@@ -1,18 +1,24 @@
 # Voltra Studio
 
-Compositing, recording and live streaming, written in Rust.
+Compositing, recording and live streaming, written in Rust. Multi-source
+scenes, an audio mixer, recording and streaming — built around predictable
+frame timing, fault isolation and performance that is measured rather than
+asserted.
 
-The reference is OBS Studio — its architecture is proven and this project takes
-from it deliberately rather than reinventing it (see
-[`docs/references/obs-studio.md`](docs/references/obs-studio.md)). What Rust
+Every subsystem is designed after studying how the field already solves the
+problem, OBS Studio above all (see
+[`docs/references/obs-studio.md`](docs/references/obs-studio.md)), and each
+decision records what it adopts, what it does differently and why. What Rust
 changes is the guarantees: a source that misbehaves is contained instead of
 taking the broadcast down, the render and audio paths are free of locks and
 per-frame allocations by construction, and there is no C ABI for plugins to
 corrupt.
 
-> **Status: fase 0.** The workspace skeleton and the quality gate are in place.
-> There is no compositing, capture or encoding yet. See
-> [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: early.** Core vocabulary, colour conversion, frame pooling, the
+> source traits, the scene graph and a CPU compositor are in place and measured.
+> Capture, encoding and output are not written yet. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) and
+> [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ## Build
 

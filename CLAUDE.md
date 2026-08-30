@@ -1,9 +1,15 @@
 # Voltra Studio — Reglas de trabajo y arquitectura
 
-Software de composición, grabación y streaming en vivo escrito en Rust.
-Objetivo: lo que hace OBS Studio, pero con **rendimiento predecible**, **sin
-crasheos por plugins** y **sin fugas de memoria**, aprovechando el sistema de
-tipos y el modelo de propiedad de Rust.
+Software de composición, grabación y emisión en vivo escrito en Rust: escenas
+con varias fuentes, mezclador de audio, grabación y streaming. Se construye
+alrededor de tres compromisos —**rendimiento predecible**, **aislamiento de
+fallos** y **sin fugas de memoria**— apoyándose en el sistema de tipos y el
+modelo de propiedad de Rust.
+
+Antes de diseñar cada subsistema se estudia cómo lo resuelve el sector, con OBS
+Studio por delante de todos (§1, regla 5). Aprender de lo que ya funciona no es
+replicarlo: cada decisión deja escrito qué se adopta, qué se hace distinto y por
+qué.
 
 > **Prioridad número uno del proyecto: rendimiento.** Cuando haya conflicto
 > entre elegancia y velocidad en el camino caliente (hot path), gana la
@@ -29,7 +35,7 @@ Este proyecto avanza **paso a paso**. Nada de entregas gigantes.
    subsistema se documenta cómo lo resuelven los referentes —OBS Studio/libobs
    por encima de todo, y donde aplique GStreamer, FFmpeg o vMix— en
    `docs/references/`, con enlaces a la fuente. El diseño debe decir
-   explícitamente **qué copiamos y qué mejoramos**. Apartarse del referente es
+   explícitamente **qué adoptamos y qué mejoramos**. Apartarse del referente es
    legítimo, pero exige justificación escrita.
 6. **Decisiones de arquitectura → ADR.** Cualquier decisión que condicione el
    futuro (backend gráfico, modelo de hilos, formato de plugins, dependencia
@@ -42,7 +48,7 @@ Este proyecto avanza **paso a paso**. Nada de entregas gigantes.
 # NNN — Título
 ## Objetivo            (qué queda funcionando al terminar; 1-3 frases)
 ## Fuera de alcance    (qué NO se hace aquí)
-## Referencia          (cómo lo hace OBS u otros; qué copiamos, qué mejoramos)
+## Referencia          (cómo lo hace OBS u otros; qué adoptamos, qué mejoramos)
 ## Diseño              (tipos, traits, flujo de datos, invariantes)
 ## Pasos               (lista ordenada y atómica)
 ## Verificación        (tests, benchmarks, criterio de aceptación medible)

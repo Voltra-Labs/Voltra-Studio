@@ -37,7 +37,7 @@ Kr/Kb con `initialize_matrix()` en vez de tabularlas a mano. Su configuración p
 defecto —y la recomendada— es **NV12 + Rec.709 + limitado**, que será también la
 nuestra.
 
-**Qué copiamos:** los coeficientes, los rangos, la derivación desde Kr/Kb, y el
+**Qué adoptamos:** los coeficientes, los rangos, la derivación desde Kr/Kb, y el
 valor por defecto.
 
 **Qué mejoramos:**

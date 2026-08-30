@@ -36,7 +36,7 @@ De `docs/references/obs-studio.md` §2, el orden del pipeline de vídeo en
 4. `render_convert_texture()` — conversión RGB→YUV.
 5. `stage_output_texture()` — descarga a CPU con doble búfer.
 
-**Qué copiamos:** el orden. En particular que **escalar va antes de convertir**,
+**Qué adoptamos:** el orden. En particular que **escalar va antes de convertir**,
 que es el arreglo gratuito de la deuda §3.1 de `docs/PERFORMANCE.md` (2,2×
 medido al bajar de 1080p a 720p). Y el tick separado del dibujo, que evita que
 una fuente cambie de estado a mitad de una composición.

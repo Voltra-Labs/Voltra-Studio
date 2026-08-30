@@ -30,7 +30,7 @@ De `docs/references/obs-studio.md` §1 y §2:
 - **`obs_video_info`** expresa la cadencia como `fps_num`/`fps_den`, no como
   decimal.
 
-**Qué copiamos:** el modelo completo de transformación (recorte → escala →
+**Qué adoptamos:** el modelo completo de transformación (recorte → escala →
 alineación → bounds → rotación → posición) y sus siete modos de bounds. Está
 probado por años de uso y es lo que los usuarios de OBS ya tienen en la cabeza;
 inventar otro modelo solo aportaría confusión.
