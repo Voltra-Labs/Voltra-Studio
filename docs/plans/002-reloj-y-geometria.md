@@ -1,7 +1,7 @@
 # 002 — Reloj racional y geometría de colocación
 
 - **Fase:** 1
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -114,6 +114,46 @@ Tests que deben existir y pasar:
 
 Criterio de aceptación medible: `place()` por debajo de **1 µs** (a 60 fps con
 100 items serían 6 ms/s solo en geometría, inaceptable si se acercara).
+
+## Resultado
+
+Puerta de calidad en verde. 27 tests (26 en `voltra-core`, 1 en `voltra-cli`).
+
+Benchmarks (`cargo bench -p voltra-core`, x86_64, perfil release):
+
+| Caso | Mediana | Presupuesto |
+|---|---|---|
+| `place` simple (sin rotación) | **60,1 ns** | < 1 µs |
+| `place` con rotación, bounds y recorte | **64,9 ns** | < 1 µs |
+| Escena de 50 items, geometría completa | **3,02 µs / frame** | 16,6 ms |
+| `Fps::pts` en NTSC | **3,09 ns** | — |
+
+La geometría de una escena densa consume el **0,018 %** del presupuesto de
+frame. Queda holgadamente dentro; el criterio de aceptación (< 1 µs por
+`place`) se cumple con 15× de margen.
+
+Observación para el futuro: la diferencia entre el caso simple y el complejo es
+de solo 5 ns, así que el `sin_cos` **no** domina. Optimizar el caso
+`rotation == 0.0` con un atajo no compensaría: el suelo lo pone el propio arnés
+de medición. Anotado para no "optimizarlo" más adelante sin volver a medir.
+
+## Desviaciones respecto al plan
+
+- **Bug encontrado por los tests: `Fps` no reducía la fracción.** `60000/1000` y
+  `60/1` son la misma cadencia y comparaban como distintas, lo que habría roto
+  cualquier `HashMap` indexado por cadencia y cualquier comparación de perfiles.
+  `Fps::new` ahora reduce por el máximo común divisor y la invariante "siempre en
+  términos mínimos" está documentada en el tipo y cubierta por un test.
+- **Un dato del plan estaba mal y el test lo cazó.** Escribí que una hora de
+  29,97 son 107 892 frames y 3 603,6 s. Son dos cosas distintas: 107 892 frames
+  duran 3 599,9964 s (una hora real), y son 108 000 frames los que duran
+  exactamente 3 603,6 s. El test corregido fija `pts(108_000)` al nanosegundo y,
+  además, **demuestra** el fallo que el tipo previene: acumular el decimal
+  `29.97` durante una hora deriva más de 1 ms y sigue creciendo.
+- `clippy::must_use_candidate` se desactiva a nivel de crate con justificación
+  escrita: son tipos `Copy` pequeños cuyos métodos son casi todos getters puros,
+  y el atributo habría superado en número a las líneas de código.
+- No se tocó `voltra info`: no había nada nuevo que mereciera salir ahí.
 
 ## Riesgos
 

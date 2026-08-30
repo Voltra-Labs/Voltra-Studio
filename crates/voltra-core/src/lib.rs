@@ -6,16 +6,24 @@
 //! and no capture devices. Platform code lives behind the traits declared here,
 //! never the other way round.
 //!
-//! At this stage the crate carries only build metadata and the shared error
-//! type; frames, colour, timing and the scene graph land in later steps.
+//! At this stage the crate carries timing, placement geometry and the shared
+//! error type; frames, colour and the scene graph land in later steps.
 
 // Panicking helpers are denied in library code (see CLAUDE.md §3) but free in
 // tests, where a failed assumption should fail the test loudly.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+// These are small `Copy` value types whose methods are almost all pure getters.
+// Annotating each one with `#[must_use]` would add more attributes than code
+// without catching a realistic mistake, so the pedantic lint is waived here.
+#![allow(clippy::must_use_candidate)]
 
 mod error;
+pub mod math;
+pub mod time;
 
 pub use error::{Error, Result};
+pub use math::{Affine, Anchor, BoundsMode, Crop, Placement, Rect, Transform, Vec2};
+pub use time::{Fps, Timestamp};
 
 /// The version of the Voltra Studio workspace this build came from.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

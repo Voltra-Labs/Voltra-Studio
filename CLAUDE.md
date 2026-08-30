@@ -238,7 +238,9 @@ cargo test --workspace
 en CI, y `voltra info` funciona. Crates vivas: `voltra-core` y `voltra-cli`; las
 demás se crearán cuando haya código que meter en ellas.
 
-Siguiente: fase 1 — vocabulario y geometría en `voltra-core`.
+**Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
+colocación (plan 002), con benchmarks de referencia. Siguiente: formatos de
+píxel y `Frame` (plan 003), y después el grafo de escena y los traits.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
