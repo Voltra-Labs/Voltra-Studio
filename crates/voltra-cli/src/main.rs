@@ -7,7 +7,9 @@
 // See the note in voltra-core: panicking helpers stay available inside tests.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+mod demo;
 mod info;
+mod render;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -37,6 +39,8 @@ struct Cli {
 enum Command {
     /// Print build and host information.
     Info,
+    /// Composite a scene and write it out as a YUV4MPEG2 stream.
+    Render(render::Args),
 }
 
 fn main() -> Result<()> {
@@ -45,6 +49,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Info => info::print(&mut std::io::stdout())?,
+        Command::Render(ref args) => render::run(args)?,
     }
 
     Ok(())
@@ -55,6 +60,10 @@ fn main() -> Result<()> {
 /// `RUST_LOG` wins when present; otherwise `-v` flags pick the level. Logging
 /// never runs on the render or audio threads, so a formatting subscriber here
 /// costs nothing on the hot path.
+///
+/// Diagnostics go to **stderr**, not to the default stdout: `voltra render -o -`
+/// puts raw video on stdout, and a single log line in the middle of it makes
+/// the stream unreadable.
 fn init_tracing(verbosity: u8) {
     let fallback = match verbosity {
         0 => "warn",
@@ -68,5 +77,6 @@ fn init_tracing(verbosity: u8) {
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
+        .with_writer(std::io::stderr)
         .init();
 }
