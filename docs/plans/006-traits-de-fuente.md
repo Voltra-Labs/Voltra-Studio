@@ -1,7 +1,7 @@
 # 006 — Traits de fuente y primera fuente real
 
 - **Fase:** 1
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -152,6 +152,38 @@ Se añade a CLAUDE.md §2: crate de fuentes integradas, depende solo de
   reduce a la mitad; y **no toca los canales de color**.
 - Un filtro sobre un formato sin alfa devuelve `Error::Unsupported`, no basura.
 - Los traits son objeto-seguros: `Box<dyn VideoSource>` compila.
+
+## Resultado
+
+Puerta de calidad en verde: **96 tests** (76 en `voltra-core`, 14 en
+`voltra-sources`, 1 en `voltra-cli`, 5 doctests).
+
+Lo que quedó en pie:
+
+- `voltra-core::source` con `SourceId`, `SourceIdGenerator` (atómico y sin
+  cerrojos, porque la UI crea fuentes mientras el hilo de render corre),
+  `SourceType`, `SourceCapabilities`, `TickContext` y los traits `Source`,
+  `VideoSource` y `VideoFilter`.
+- Crate `voltra-sources` con `ColorSource` y `OpacityFilter`.
+
+No hay benchmark en este paso: nada de lo añadido está en un bucle por píxel
+salvo `OpacityFilter`, que recorre el frame una vez y quedará medido cuando el
+compositor lo encadene de verdad. En su lugar hay un test que comprueba la
+invariante que sí importa ahora —`never_reallocates_between_ticks`— porque el
+riesgo real de una fuente no es que sea lenta sino que asigne por frame.
+
+## Desviaciones respecto al plan
+
+- Se creó la crate `voltra-sources`, que no estaba en la estructura de CLAUDE.md
+  §2. La alternativa era meter fuentes concretas en `voltra-core`, que es
+  vocabulario y no debe tener inquilinos. Queda documentada en la estructura.
+- `SourceCapabilities` no expone constructor libre: solo las cuatro
+  combinaciones con nombre (`VIDEO`, `AUDIO`, `AUDIO_VIDEO`, `COMPOSITE`). Es más
+  restrictivo de lo planteado y es lo correcto: si aparece una combinación
+  legítima que falte, se añade con nombre y con motivo.
+- `OpacityFilter` guarda la opacidad en punto fijo Q8 y no en `f32`, para no
+  tener una multiplicación en coma flotante por píxel. La API pública sigue
+  siendo `f32` porque es lo que una curva de animación producirá.
 
 ## Riesgos
 

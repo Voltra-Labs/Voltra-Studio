@@ -25,6 +25,7 @@ pub mod frame;
 pub mod math;
 pub mod pixel;
 pub mod pool;
+pub mod source;
 pub mod time;
 
 pub use color::{ColorRange, ColorSpace, ColorSpec, RgbToYuv};
@@ -34,6 +35,10 @@ pub use frame::{FrameSize, PLANE_ALIGNMENT, Plane, VideoFrame};
 pub use math::{Affine, Anchor, BoundsMode, Crop, Placement, Rect, Transform, Vec2};
 pub use pixel::{MAX_PLANES, PixelFormat};
 pub use pool::{FramePool, PoolStats};
+pub use source::{
+    Source, SourceCapabilities, SourceId, SourceIdGenerator, SourceType, TickContext, VideoFilter,
+    VideoSource,
+};
 pub use time::{Fps, Timestamp};
 
 /// The version of the Voltra Studio workspace this build came from.

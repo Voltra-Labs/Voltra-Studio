@@ -1,0 +1,15 @@
+[package]
+name = "voltra-sources"
+description = "Built-in sources and filters for Voltra Studio, with no operating system dependencies."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+voltra-core = { workspace = true }
+
+[lints]
+workspace = true

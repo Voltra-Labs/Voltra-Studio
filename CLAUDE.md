@@ -88,6 +88,8 @@ Voltra-Studio/
 │   │                          #   SIN dependencias de SO. Compila en cualquier target.
 │   ├── voltra-render/         # compositor: escena -> frame. Backend GPU + fallback CPU.
 │   ├── voltra-audio/          # mezclador, resampling, medidores, sincronía A/V.
+│   ├── voltra-sources/        # fuentes y filtros integrados, sin dependencias del SO.
+│   │                          #   Color, patrones de prueba, opacidad. Material de test del compositor.
 │   ├── voltra-capture/        # captura por plataforma (pantalla, ventana, cámara, audio).
 │   │                          #   Todo tras feature flags por SO.
 │   ├── voltra-encode/         # codificación: H.264/AV1, hardware y software.
@@ -243,8 +245,8 @@ demás se crearán cuando haya código que meter en ellas.
 
 **Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
 colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
-benchmarks de referencia. y conversión de color RGB→YUV (plan 004). y pool de frames (plan 005). Siguiente: el
-grafo de escena y los traits `Source`/`Filter`/`Output`.
+benchmarks de referencia. y conversión de color RGB→YUV (plan 004). pool de frames (plan 005) y los traits de fuente con la
+primera fuente real (plan 006). Siguiente: el grafo de escena.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
