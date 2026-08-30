@@ -1,7 +1,7 @@
 # 005 — Pool de frames
 
 - **Fase:** 1
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -97,6 +97,43 @@ struct IdleFrame { frame: VideoFrame, idle_rounds: u8 }
 Criterio de aceptación: **el ciclo adquirir/devolver por debajo de 1 µs** a
 1080p BGRA, frente a los 387 µs de asignar. Es un factor de 300; si no se
 consigue, el pool no vale la pena y hay que entender por qué.
+
+## Resultado
+
+Puerta de calidad en verde: 74 tests (70 unitarios, 1 en `voltra-cli`, 3
+doctests).
+
+| Caso, 1080p BGRA | Mediana | Frente a asignar |
+|---|---|---|
+| `VideoFrame::new` (asignar) | 378 µs | — |
+| `acquire` + `release` | **13,3 ns** | **28 400× más rápido** |
+| `acquire_zeroed` + `release` | 344 µs | 1,1× |
+
+El criterio de aceptación (< 1 µs) se cumple con setenta y cinco veces de
+margen. En régimen estacionario el pool deja de asignar por completo: el test
+`the_steady_state_stops_allocating` comprueba que cien adquisiciones consecutivas
+producen **una** asignación.
+
+### Hallazgo: `acquire_zeroed` casi no ahorra nada
+
+Reciclar y poner a cero cuesta 344 µs frente a 378 µs de asignar de nuevo:
+apenas un 9 %. La razón es que ambos caminos escriben los 8,29 MB completos, y
+los dos lo hacen a unos 22–24 GB/s, que es el ancho de banda de escritura medido
+en el plan 003.
+
+O sea: **el ahorro del pool no viene de reutilizar la asignación, viene de no
+escribir el búfer**. Quien necesite frames en blanco no obtiene prácticamente
+nada del pool. La consecuencia de diseño es clara y queda documentada en la API:
+las etapas del pipeline deben sobrescribir el frame entero, no pintar encima de
+lo que había.
+
+## Desviaciones respecto al plan
+
+- Ninguna en el diseño. `FramePool`, el envejecido a las 5 rondas, la purga al
+  reconfigurar y el tope de ocupación salieron como estaban planteados.
+- Se añadió `PoolStats::hit_rate()`, no previsto: la proporción de aciertos es lo
+  que se querrá enseñar en las estadísticas en vivo, y calcularla fuera obligaría
+  a exponer los contadores en crudo a la UI.
 
 ## Riesgos
 

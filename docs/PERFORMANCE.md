@@ -34,6 +34,8 @@ conversión, codificación y mux. El reparto objetivo da ~4 ms a la composición
 | Geometría de una escena de 50 items | 3,02 µs | 0,018 % | 002 |
 | `Fps::pts` | 3,1 ns | — | 002 |
 | Asignar frame BGRA 1080p | 387 µs | 2,3 % | 003 |
+| **Reciclar frame BGRA 1080p (pool)** | **13,3 ns** | **0,00008 %** | 005 |
+| Reciclar frame BGRA 1080p poniéndolo a cero | 344 µs | 2,1 % | 005 |
 | Asignar frame I420 1080p | 133 µs | 0,8 % | 003 |
 | Escribir todas las filas, BGRA 1080p | 410 µs | 20,2 GB/s | 003 |
 | Leer todas las filas, BGRA 1080p | 1,99 ms | 4,2 GB/s | 003 |
@@ -82,14 +84,21 @@ que es gratis; (2) la GPU; y solo si tras eso la conversión en CPU sigue en el
 camino caliente, (3) el SIMD explícito, con su propio plan y sus propias
 mediciones.
 
-### 3.2 Asignar un frame cuesta 387 µs
+### 3.2 Asignar un frame cuesta 387 µs — RESUELTO (plan 005)
 
-**Síntoma.** `VideoFrame::new` a 1080p BGRA tarda 387 µs, ~46 µs por megabyte, y
-escala con el tamaño: es el `vec![0; n]` tocando páginas nuevas. A 60 fps son
-**23 ms de trabajo inútil por cada segundo de emisión**.
+**Síntoma.** `VideoFrame::new` a 1080p BGRA tardaba 387 µs, ~46 µs por megabyte:
+el `vec![0; n]` tocando páginas nuevas. A 60 fps, **23 ms de trabajo inútil por
+cada segundo de emisión**.
 
-**Arreglo.** Pool de frames reutilizables (plan 005). Un frame reciclado no
-vuelve a tocar páginas ni a poner nada a cero.
+**Arreglo aplicado.** `FramePool` (plan 005). El ciclo adquirir/devolver cuesta
+**13,3 ns**, 28 400× menos. En régimen estacionario no se asigna nada.
+
+**Matiz que conviene no olvidar.** `acquire_zeroed()` cuesta 344 µs, apenas un
+9 % menos que asignar de cero: los dos caminos escriben los 8,29 MB enteros, y
+ambos lo hacen al ancho de banda de la memoria. **El ahorro del pool no viene de
+reutilizar la asignación sino de no escribir el búfer.** Toda etapa del pipeline
+debe sobrescribir el frame completo; la que pinte encima de lo anterior pierde
+el beneficio entero.
 
 ### 3.3 Un bucle de lectura mal formado va 5× más lento que la memoria
 

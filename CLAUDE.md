@@ -243,8 +243,8 @@ demás se crearán cuando haya código que meter en ellas.
 
 **Fase 1 en curso.** `voltra-core` ya tiene reloj racional y geometría de
 colocación (plan 002) y formatos de píxel con `VideoFrame` (plan 003), todo con
-benchmarks de referencia. y conversión de color RGB→YUV (plan 004). Siguiente: pool de
-frames (plan 005) y después el grafo de escena y los traits.
+benchmarks de referencia. y conversión de color RGB→YUV (plan 004). y pool de frames (plan 005). Siguiente: el
+grafo de escena y los traits `Source`/`Filter`/`Output`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

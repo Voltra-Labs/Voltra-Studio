@@ -30,5 +30,9 @@ harness = false
 name = "convert"
 harness = false
 
+[[bench]]
+name = "pool"
+harness = false
+
 [lints]
 workspace = true
