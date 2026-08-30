@@ -21,7 +21,7 @@ Fuentes: [Backend Design (docs.obsproject.com)](https://docs.obsproject.com/back
 | `obs_encoder_t` | Comprime vídeo/audio. Se conecta al output con `obs_output_set_video_encoder()`. |
 | `obs_service_t` | Parámetros de la plataforma de streaming (URL, clave). |
 
-Ideas clave que copiamos:
+Ideas clave que adoptamos:
 - **Un solo trait raíz para fuente/filtro/transición** simplifica enormemente
   el grafo: una escena es una fuente más, lo que da anidamiento gratis.
 - **Canales de salida** (`0..MAX_CHANNELS`): la mezcla final no es "la escena
@@ -106,9 +106,9 @@ entero.
 aislar el fallo (proceso separado o WASM) para que un plugin no pueda romper una
 emisión en directo.
 
-## 6. Resumen: qué copiamos y qué mejoramos
+## 6. Resumen: qué adoptamos y qué mejoramos
 
-| Copiamos | Mejoramos |
+| Adoptamos | Mejoramos |
 |---|---|
 | Grafo de fuentes unificado (fuente/filtro/transición/escena) | Tipado fuerte en vez de `void*` y punteros a función |
 | Canales de salida y mezclas múltiples | Estado publicado como snapshot inmutable, sin bloqueos en render |

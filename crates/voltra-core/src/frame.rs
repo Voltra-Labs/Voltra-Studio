@@ -9,7 +9,7 @@
 //!
 //! libobs keeps two distinct types: `obs_source_frame` for pixels in system
 //! memory (cameras, media files, capture APIs that hand over buffers) and
-//! `gs_texture_t` for pixels that live on the GPU. Voltra copies that split.
+//! `gs_texture_t` for pixels that live on the GPU. Voltra keeps the same split.
 //! This type is the former. The GPU texture belongs to `voltra-render`, which
 //! owns the graphics backend, and the encoder input will accept either — that
 //! is what keeps the zero-copy path of ADR 0003 open.

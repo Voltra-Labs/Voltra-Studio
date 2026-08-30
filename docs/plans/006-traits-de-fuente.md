@@ -47,7 +47,7 @@ Lo decisivo son **los dos modelos de entrega de vídeo**:
 - **De render** (`video_render`): la fuente se dibuja con la API gráfica cuando
   el compositor se lo pide. Es el modelo de la captura de pantalla y del texto.
 
-**Qué copiamos:** los cuatro tipos de fuente; el que **filtros, transiciones y
+**Qué adoptamos:** los cuatro tipos de fuente; el que **filtros, transiciones y
 escenas sean fuentes también**, que es lo que da anidamiento gratis; la
 separación tick/render; y los dos modelos de entrega.
 

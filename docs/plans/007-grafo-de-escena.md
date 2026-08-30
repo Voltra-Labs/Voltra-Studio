@@ -52,7 +52,7 @@ Modos de mezcla (`obs_blending_type`): `NORMAL`, `ADDITIVE`, `SUBTRACT`,
 Filtros de escalado (`obs_scale_type`): `DISABLE`, `POINT`, `BICUBIC`,
 `BILINEAR`, `LANCZOS`, `AREA`.
 
-**Qué copiamos:** el modelo entero de item —identificador propio, fuente,
+**Qué adoptamos:** el modelo entero de item —identificador propio, fuente,
 visibilidad, bloqueo, transformación, mezcla y filtro de escalado—, el contador
 de identificadores por escena, y los siete modos de mezcla con los seis filtros.
 

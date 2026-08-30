@@ -20,7 +20,7 @@ info` imprime la versión y el entorno detectado.
 ## Referencia
 
 De `docs/references/obs-studio.md`: libobs separa núcleo (`libobs`) de
-plugins y de frontend, y el núcleo no depende de la UI. Copiamos esa separación
+plugins y de frontend, y el núcleo no depende de la UI. Adoptamos esa separación
 desde el primer commit: `voltra-core` sin dependencias del sistema y
 `voltra-cli` como frontend headless —el equivalente a tener un `obs-cli` desde
 el día uno, que en OBS llegó tarde y por eso es incómodo automatizarlo.

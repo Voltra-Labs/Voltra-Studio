@@ -41,7 +41,7 @@ struct async_frame { struct obs_source_frame *frame; long unused_count; bool use
   más vale perder frames de una fuente atascada que crecer sin límite.
 - `remove_async_frame()` es la devolución: pone `used = false`.
 
-**Qué copiamos:** la lista de libres, el envejecido de los inactivos a las 5
+**Qué adoptamos:** la lista de libres, el envejecido de los inactivos a las 5
 rondas, la purga al cambiar la geometría y el tope duro de ocupación.
 
 **Qué mejoramos:**

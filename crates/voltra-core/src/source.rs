@@ -3,7 +3,7 @@
 //! The shape follows `obs_source_info`: an identity string, a type, declared
 //! capabilities, and a tick separate from producing output. Filters,
 //! transitions and scenes are sources too, which is what gives libobs its
-//! nesting for free and is worth copying exactly.
+//! nesting for free and is worth adopting as it stands.
 //!
 //! # Only the asynchronous model lives here
 //!

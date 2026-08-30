@@ -33,7 +33,7 @@ Del código de libobs (`libobs/media-io/video-io.h` y `video-frame.c`):
 - Los `linesize` por formato: I420 → `width`, `width/2`, `width/2`; NV12 →
   `width`, `width` (croma entrelazada); BGRA → `width * 4`; I444 → `width` ×3.
 
-**Qué copiamos:** exactamente ese modelo. Una asignación, planos contiguos con
+**Qué adoptamos:** exactamente ese modelo. Una asignación, planos contiguos con
 offsets alineados, *stride* independiente del ancho. Es lo correcto para la caché
 y lo que las APIs de captura y encoding esperan recibir.
 
@@ -59,7 +59,7 @@ tipo**: `obs_source_frame` es el frame de CPU (fuentes asíncronas: cámaras,
 ficheros, capturas que entregan memoria), y `gs_texture_t` es la textura de GPU
 del camino de render. Son tipos distintos que conviven.
 
-Copiamos esa separación. `VideoFrame` es el frame **de CPU**. La textura vivirá
+Adoptamos esa separación. `VideoFrame` es el frame **de CPU**. La textura vivirá
 en `voltra-render` (no puede estar en `voltra-core`: depende del backend
 gráfico). Quien tiene que aceptar ambas es la **entrada del encoder**, y eso se
 decide en el plan del encoder, no aquí. Lo que este paso sí garantiza es que
