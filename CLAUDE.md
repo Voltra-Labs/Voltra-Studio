@@ -25,7 +25,13 @@ Este proyecto avanza **paso a paso**. Nada de entregas gigantes.
    anota en el plan como paso futuro; no se cuela en el commit actual.
 4. **Al terminar un paso:** ejecutar la puerta de calidad (§6.1), hacer commit
    con mensaje convencional y reportar qué se hizo, qué se midió y qué sigue.
-5. **Decisiones de arquitectura → ADR.** Cualquier decisión que condicione el
+5. **Nada se inventa: primero el estado del arte.** Antes de diseñar un
+   subsistema se documenta cómo lo resuelven los referentes —OBS Studio/libobs
+   por encima de todo, y donde aplique GStreamer, FFmpeg o vMix— en
+   `docs/references/`, con enlaces a la fuente. El diseño debe decir
+   explícitamente **qué copiamos y qué mejoramos**. Apartarse del referente es
+   legítimo, pero exige justificación escrita.
+6. **Decisiones de arquitectura → ADR.** Cualquier decisión que condicione el
    futuro (backend gráfico, modelo de hilos, formato de plugins, dependencia
    pesada) se registra en `docs/adr/NNNN-titulo.md` con: contexto, opciones
    evaluadas, decisión, consecuencias. Un ADR no se edita: se supersede.
@@ -36,6 +42,7 @@ Este proyecto avanza **paso a paso**. Nada de entregas gigantes.
 # NNN — Título
 ## Objetivo            (qué queda funcionando al terminar; 1-3 frases)
 ## Fuera de alcance    (qué NO se hace aquí)
+## Referencia          (cómo lo hace OBS u otros; qué copiamos, qué mejoramos)
 ## Diseño              (tipos, traits, flujo de datos, invariantes)
 ## Pasos               (lista ordenada y atómica)
 ## Verificación        (tests, benchmarks, criterio de aceptación medible)
@@ -54,6 +61,8 @@ Un paso está hecho cuando **todo** esto es cierto:
       no es obvio.
 - [ ] Si toca el hot path: hay benchmark con número antes/después.
 - [ ] El plan correspondiente está actualizado con lo realmente hecho.
+- [ ] Si el paso introduce diseño nuevo, la referencia usada está en
+      `docs/references/` y citada en el plan.
 
 ---
 
@@ -71,7 +80,8 @@ Voltra-Studio/
 ├── docs/
 │   ├── ROADMAP.md             # fases del producto
 │   ├── adr/                   # decisiones de arquitectura
-│   └── plans/                 # planes de ejecución por paso
+│   ├── plans/                 # planes de ejecución por paso
+│   └── references/            # estado del arte (libobs, GStreamer, FFmpeg)
 ├── crates/
 │   ├── voltra-core/           # vocabulario: frame, píxel, tiempo, geometría,
 │   │                          #   traits Source/Filter/Output, errores.
@@ -105,8 +115,9 @@ Reglas de estructura:
 ## 3. Convenciones de Rust
 
 - **Edición 2024**, MSRV declarada en el workspace y verificada en CI.
-- **Idioma:** código, comentarios, documentación y commits en **inglés**; la
-  conversación de trabajo, en español.
+- **Idioma:** código, comentarios de código, doc-comments y mensajes de commit
+  en **inglés**; los documentos de `docs/` (planes, ADR, referencias) y la
+  conversación de trabajo, en **español**.
 - **`unsafe` es la excepción, no la herramienta.** Solo se permite con: (a)
   justificación escrita en un comentario `// SAFETY:` que enumere las
   invariantes, (b) encapsulado en el módulo más pequeño posible tras una API
@@ -226,11 +237,14 @@ Fase 0: repositorio recién creado. No hay código todavía. El primer paso es
 fijar las decisiones abiertas (ADR) y levantar el esqueleto del workspace con la
 puerta de calidad funcionando.
 
-Decisiones abiertas pendientes de ADR:
+Decisiones ya tomadas (ver `docs/adr/`):
 
-- Backend de render (GPU vía `wgpu` frente a camino CPU inicial).
-- Plataforma prioritaria para la captura.
-- Toolkit de interfaz.
-- Estrategia de codificación (hardware nativo por SO frente a `ffmpeg`).
+| ADR | Decisión |
+|---|---|
+| 0001 | Render: camino CPU de referencia primero, `wgpu` como backend acelerado detrás del mismo trait. |
+| 0002 | Plataforma prioritaria: Linux (PipeWire + Wayland). |
+| 0003 | Encoding: hardware primero y sin copia a CPU; software solo como respaldo. |
+| 0004 | Interfaz: `egui`/`eframe`. |
 
-Ver `docs/ROADMAP.md` para las fases del producto.
+Referencia base del diseño: `docs/references/obs-studio.md`.
+Fases del producto: `docs/ROADMAP.md`.
