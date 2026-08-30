@@ -282,7 +282,10 @@ de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 (§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
-Mientras tanto el siguiente plan es el de audio (fase 3). Secuencia en
+**Fase 3 arrancada.** El plan 011 dejó el vocabulario de audio en `voltra-core`:
+`SampleRate` con aritmética exacta, `ChannelLayout`, los formatos de borde y
+`AudioBuffer` —float de 32 bits planar, una sola asignación—. Siguiente paso: el
+mezclador, que es el criterio de salida de la fase. Secuencia en
 `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
@@ -297,4 +300,5 @@ Decisiones ya tomadas (ver `docs/adr/`):
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
 Composición acelerada: `docs/references/gpu-compositing.md`.
+Representación de audio: `docs/references/audio.md`.
 Fases del producto: `docs/ROADMAP.md`.

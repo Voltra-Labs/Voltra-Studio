@@ -1,7 +1,7 @@
 # 011 — Vocabulario de audio
 
 - **Fase:** 3
-- **Estado:** en curso
+- **Estado:** completado (2026-08-30) — ver Resultado
 
 ## Objetivo
 
@@ -162,3 +162,55 @@ que es el plan siguiente.
   96 000 muestras por segundo, tres órdenes de magnitud menos que los píxeles de
   1080p60. Se mide igualmente, porque "es poco" sin número es una opinión
   (§4.8).
+
+## Resultado
+
+Puerta de calidad en verde: **183 tests** (desde 155), `clippy -D warnings`
+limpio, `fmt` limpio. `voltra-core` pasa de 87 a 112 tests propios.
+
+### Lo que quedó hecho
+
+`SampleRate`, `ChannelLayout`, `SampleFormat`, `SampleOrder`, `SampleSpec` y
+`AudioBuffer`, en `crates/voltra-core/src/audio/`, más conversión en los dos
+sentidos para las ocho combinaciones de profundidad × disposición y
+`benches/audio.rs`.
+
+### Las cifras
+
+En `docs/PERFORMANCE.md` §2, por bloque de 1024 muestras estéreo. El peor caso
+—codificar a `i16` intercalado— es **2,19 µs de los 21,3 ms** del bloque: el
+0,01 %. Dos asimetrías quedaron anotadas sin actuar sobre ellas:
+
+- **Codificar a `i16` cuesta 2,8× lo que decodificarlo**, por la sujeción al
+  rango entero.
+- **Intercalar cuesta 3–5× lo que copiar planos**, que es la transposición que
+  la referencia anuncia como el precio del formato planar.
+
+Ninguna se optimiza. Al 0,01 % del presupuesto, hacerlo sería exactamente la
+optimización sin perfil que prohíbe CLAUDE.md §4.8.
+
+### Un test que estaba mal y lo que enseñó
+
+El test de deriva afirmaba que sumar duraciones redondeadas pierde *más de un
+milisegundo* en media hora. **Es falso, y por dos órdenes de magnitud**: un
+bloque de 1024 muestras a 48 kHz dura 21 333 333,33 ns, redondear pierde un
+tercio de nanosegundo por bloque, y en media hora eso son **33 µs**. Muy por
+debajo de cualquier error de sincronía audible.
+
+El test corregido no afirma una magnitud, afirma la **forma**: la deriva crece
+linealmente y no vuelve, mientras que calcular desde el índice absoluto cuesta
+lo mismo y no deriva nunca. Ese es el argumento honesto para el diseño, y el
+anterior era retórica con un número inventado encima.
+
+## Desviaciones respecto al plan
+
+- **El vocabulario vive en `voltra-core`, no en `voltra-audio`.** Estaba previsto
+  y razonado en el plan, pero conviene repetirlo: `voltra-audio` se creará con el
+  mezclador. Si `AudioBuffer` viviera allí, `voltra-capture` tendría que depender
+  del mezclador solo para entregar muestras.
+- **Se añadió `reshape`**, no previsto. Una fuente que cambia de disposición a
+  mitad de sesión necesita rehacer su búfer, y hacerlo sin reasignar cuando el
+  nuevo tamaño cabe es lo que mantiene el `malloc` fuera del hilo de audio
+  (§4.3).
+- **`I32` se soporta además de `U8`, `I16` y `F32`.** Sale casi gratis con el
+  trait de profundidad y es lo que entregan las interfaces de audio decentes.

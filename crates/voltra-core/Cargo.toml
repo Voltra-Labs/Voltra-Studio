@@ -34,5 +34,9 @@ harness = false
 name = "pool"
 harness = false
 
+[[bench]]
+name = "audio"
+harness = false
+
 [lints]
 workspace = true

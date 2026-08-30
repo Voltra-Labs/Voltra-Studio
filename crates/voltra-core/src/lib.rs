@@ -6,9 +6,10 @@
 //! and no capture devices. Platform code lives behind the traits declared here,
 //! never the other way round.
 //!
-//! At this stage the crate carries timing, placement geometry, pixel formats
-//! and the CPU video frame; colour conversion and the scene graph land in later
-//! steps.
+//! The crate carries timing, placement geometry, pixel formats and the CPU video
+//! frame, colour conversion, the frame pool, the source traits, the scene graph,
+//! and the audio vocabulary — rate, channel layout, edge sample formats and the
+//! float planar buffer everything mixes in.
 
 // Panicking helpers are denied in library code (see CLAUDE.md §3) but free in
 // tests, where a failed assumption should fail the test loudly.
@@ -18,6 +19,7 @@
 // without catching a realistic mistake, so the pedantic lint is waived here.
 #![allow(clippy::must_use_candidate)]
 
+pub mod audio;
 pub mod color;
 pub mod convert;
 mod error;
@@ -29,6 +31,9 @@ pub mod scene;
 pub mod source;
 pub mod time;
 
+pub use audio::{
+    AudioBuffer, ChannelLayout, MAX_CHANNELS, SampleFormat, SampleOrder, SampleRate, SampleSpec,
+};
 pub use color::{ColorRange, ColorSpace, ColorSpec, RgbToYuv};
 pub use convert::rgb_to_yuv;
 pub use error::{Error, Result};
