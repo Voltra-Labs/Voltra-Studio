@@ -1,7 +1,7 @@
 # 001 — Esqueleto del workspace y puerta de calidad
 
 - **Fase:** 0
-- **Estado:** propuesto
+- **Estado:** completado (2026-08-30)
 
 ## Objetivo
 
@@ -58,12 +58,41 @@ crates/
 
 ## Verificación
 
-- [ ] `cargo build --workspace --all-targets`
-- [ ] `cargo test --workspace`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo run -p voltra-cli -- info` imprime versión, target y número de hilos.
-- [ ] Tiempo de compilación limpia anotado aquí como línea base.
+- [x] `cargo build --workspace --all-targets`
+- [x] `cargo test --workspace` — 5 tests en verde
+- [x] `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] `cargo fmt --all --check`
+- [x] `cargo run -p voltra-cli -- info` imprime versión, MSRV, perfil, host y
+      paralelismo disponible.
+- [x] Línea base de compilación anotada abajo.
+
+## Resultado
+
+Línea base medida en el contenedor de desarrollo (x86_64-linux, 4 hilos):
+
+| Medida | Valor |
+|---|---|
+| `cargo build --workspace --release` desde limpio | **19,4 s** |
+| Binario `voltra` (release, `lto = "thin"`) | **1,81 MB** |
+| Tests | 5 (4 en `voltra-core`, 1 en `voltra-cli`) |
+
+Se vigilará el tiempo de compilación en los próximos pasos: es el primer aviso
+de que una dependencia pesada se ha colado en las features por defecto.
+
+## Desviaciones respecto al plan
+
+- `clippy::unwrap_used` y `clippy::expect_used` saltaban dentro de los tests,
+  donde CLAUDE.md §3 los permite expresamente. En vez de rebajar el lint —que es
+  el que protege el código de librería— cada crate lleva
+  `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`. Los
+  tests de integración futuros en `tests/` necesitarán la misma línea.
+- `clippy::pedantic` no dio guerra: no hizo falta ninguna excepción.
+- `panic = "abort"` se descartó en el perfil `release`, en contra de lo que suele
+  ponerse por defecto: el aislamiento de fuentes y plugins (CLAUDE.md §5, y la
+  mejora que el ADR de extensiones perseguirá) depende del desenrollado de pila.
+  Queda anotado como comentario en `Cargo.toml` para que nadie lo "arregle".
+- Se añadió un trabajo de MSRV a CI, no previsto en el plan: declarar
+  `rust-version` sin verificarlo es declarar una mentira.
 
 ## Riesgos
 

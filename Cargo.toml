@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = ["crates/voltra-core", "crates/voltra-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/Voltra-Labs/Voltra-Studio"
+authors = ["Voltra Labs"]
+
+[workspace.dependencies]
+voltra-core = { path = "crates/voltra-core", version = "0.1.0" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Shared lint policy. Every crate opts in with `[lints] workspace = true`.
+# Group lints carry a lower priority so individual lints can override them.
+[workspace.lints.rust]
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unused_qualifications = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+# The hot path must not hide allocations or panics behind convenience.
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# `panic = "abort"` is deliberately NOT set: source and plugin isolation relies
+# on unwinding, so a misbehaving component can be contained instead of taking
+# the whole broadcast down.
+
+# Release speed with symbols, so profiling shows real function names.
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"

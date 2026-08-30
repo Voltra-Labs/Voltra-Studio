@@ -125,7 +125,8 @@ Reglas de estructura:
 - **Errores:** `thiserror` en librerías (enums concretos, un `Error` por crate o
   por dominio), `anyhow` solo en binarios. **Prohibido `unwrap()`/`expect()`/
   `panic!()` en código de librería** salvo invariantes imposibles documentadas;
-  en tests es libre. Un fallo de una fuente nunca puede tumbar el pipeline.
+  en tests es libre — cada crate lo habilita con
+  `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`. Un fallo de una fuente nunca puede tumbar el pipeline.
 - **API pública:** tipos concretos y `newtype` en vez de primitivos sueltos
   (`SourceId(u32)`, no `u32`). `#[non_exhaustive]` en enums que crecerán.
   Derivar `Debug` siempre; `Clone` solo si es barato o está justificado.
@@ -233,9 +234,11 @@ cargo test --workspace
 
 ## 8. Estado actual
 
-Fase 0: repositorio recién creado. No hay código todavía. El primer paso es
-fijar las decisiones abiertas (ADR) y levantar el esqueleto del workspace con la
-puerta de calidad funcionando.
+**Fase 0 cerrada.** El workspace existe, la puerta de calidad corre en local y
+en CI, y `voltra info` funciona. Crates vivas: `voltra-core` y `voltra-cli`; las
+demás se crearán cuando haya código que meter en ellas.
+
+Siguiente: fase 1 — vocabulario y geometría en `voltra-core`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

@@ -1,0 +1,24 @@
+[package]
+name = "voltra-cli"
+description = "Headless front-end and development harness for Voltra Studio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "voltra"
+path = "src/main.rs"
+
+[dependencies]
+voltra-core = { workspace = true }
+
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
