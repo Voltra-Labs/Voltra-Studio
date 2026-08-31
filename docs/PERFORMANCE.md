@@ -70,6 +70,16 @@ Audio, por bloque de **1024 muestras estéreo** — la unidad que mezcla libobs,
 | Asignar búfer 1024 estéreo | 76,7 ns | 0,0004 % | 011 |
 | Silenciar búfer 1024 estéreo | 44,3 ns | 0,0002 % | 011 |
 
+Mezcla, por el mismo bloque de 1024 muestras estéreo:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| Mezclar 1 pista, ganancia asentada | 1,31 µs | 0,006 % | 012 |
+| Mezclar 4 pistas | 2,57 µs | 0,012 % | 012 |
+| **Mezclar 8 pistas** | **4,16 µs** | **0,020 %** | 012 |
+| Mezclar 16 pistas | 7,78 µs | 0,037 % | 012 |
+| Mezclar 8 pistas, todas en rampa | 14,7 µs | 0,069 % | 012 |
+
 Dos observaciones, ninguna accionable todavía:
 
 1. **Codificar a `i16` cuesta 2,8× lo que decodificarlo.** La sujeción al rango
@@ -199,6 +209,39 @@ cargo run --release -p voltra-cli --features gpu -- \
 El resumen avisa por stderr cuando el adaptador es software, para que nadie
 copie aquí un número que no lo es. La primera composición incluye la compilación
 de los pipelines, así que se mide a partir de la segunda.
+
+### 3.7 `mul_add` sin FMA en hardware cuesta 12× — RESUELTO (plan 012)
+
+**Síntoma.** La primera versión del mezclador tardaba **50,0 µs** en sumar 8
+pistas de 1024 muestras estéreo. Son 16 384 multiplicaciones-acumulaciones: unos
+3 ns cada una, cuando un bucle así debería estar muy por debajo del nanosegundo.
+
+**Causa.** El bucle usaba `f32::mul_add`, que garantiza **un solo redondeo**. Esa
+garantía necesita una instrucción FMA, y FMA no está en la línea base de
+`x86_64` —llegó con AVX2—, así que sin `target-feature=+fma` el compilador no
+puede emitirla: emite una **llamada a la función `fmaf` de libm**. Una llamada a
+función por muestra, que además impide vectorizar el bucle entero.
+
+**Arreglo.** `a * b + c` en vez de `a.mul_add(b, c)`. La precisión extra de un
+redondeo único no vale nada aquí: las muestras ya vienen de una conversión con
+pérdida y van a otra.
+
+| Caso | Antes | Después | Mejora |
+|---|---|---|---|
+| 8 pistas, asentado | 50,05 µs | 4,07 µs | **12,3×** |
+| 16 pistas, asentado | 100,2 µs | 7,53 µs | 13,3× |
+| 8 pistas, en rampa | 195,5 µs | 59,6 µs | 3,3× |
+
+**Segunda ronda, sobre la rampa.** Partir el bloque en el tramo que la rampa
+recorre de verdad y el resto ya asentado quita la rama de "¿he llegado?" de
+ambos bucles: **59,6 → 14,7 µs, otro 4×**. Con una rampa de 10 ms en un bloque
+de 21,3 ms, más de la mitad del bloque estaba pasando por aritmética de rampa
+sin necesitarla.
+
+**Dónde más mirar.** `mul_add` aparece también en `U8Depth::encode`
+(`crates/voltra-core/src/audio/convert.rs`), en el camino de 8 bits sin signo.
+Es una por muestra y ese formato es raro; queda anotado, sin medir y sin tocar.
+En el camino de píxeles no aparece: el muestreo del plan 008 es entero.
 
 ### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
 

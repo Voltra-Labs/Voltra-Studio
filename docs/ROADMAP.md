@@ -43,11 +43,12 @@ software, así que **no hay ninguna cifra de GPU** (`docs/PERFORMANCE.md` §3.6)
 Cerrar la fase 2 no requiere escribir código: requiere una máquina con GPU y una
 tarde.
 
-Mientras tanto arrancó la **fase 3**: el plan 011 dejó el vocabulario de audio
-—frecuencia, disposición de canales, formatos de borde y el búfer float planar—
-en `voltra-core`. El siguiente paso es el **mezclador**, que es el criterio de
-salida de la fase: sumar pistas con volumen y paneo **sin asignar ni bloquear en
-el callback**.
+Mientras tanto la **fase 3** avanza: vocabulario de audio en `voltra-core`
+(plan 011) y mezclador multipista en `voltra-audio` (plan 012). **El criterio de
+salida de la fase ya está cumplido y demostrado con un test**: cero asignaciones
+y cero bloqueos en la mezcla. Queda el resto de la fase —medidores y paneo,
+remuestreo, y la sincronía A/V anclada al reloj de audio—, que es el siguiente
+plan.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
@@ -66,9 +67,12 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 ## Fase 3 — Audio
 - Vocabulario: frecuencia, canales, formatos de borde, búfer float planar
   (plan 011, hecho).
-- Mezclador multipista, medidores, resampling, sincronía A/V anclada al reloj de
-  audio.
+- Mezclador multipista con ganancia interpolada y control sin bloqueos
+  (plan 012, hecho).
+- Medidores y paneo, remuestreo, sincronía A/V anclada al reloj de audio.
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
+  **Cumplido y demostrado** por `voltra-audio/tests/no_allocation.rs`, que
+  cuenta asignaciones con un asignador global.
 
 ## Fase 4 — Salida a fichero
 - Codificación de vídeo y audio, muxing, grabación real reproducible.

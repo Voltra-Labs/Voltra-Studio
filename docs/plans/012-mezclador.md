@@ -1,7 +1,7 @@
 # 012 — Mezclador multipista
 
 - **Fase:** 3
-- **Estado:** en curso
+- **Estado:** completado (2026-08-31) — ver Resultado
 
 ## Objetivo
 
@@ -147,3 +147,83 @@ mezclar 8 pistas de 1024 muestras estéreo está medido y anotado.
   ganancia estacionaria sería incorrecta para siempre y los tests de suma
   seguirían pasando por poco. Mitigación: un test comprueba la convergencia
   exacta al objetivo.
+
+## Resultado
+
+Puerta de calidad en verde: **216 tests** (desde 183), `clippy -D warnings` y
+`fmt` limpios. Crate nueva `voltra-audio` con 24 tests unitarios, 6 de
+asignación y 3 doctests.
+
+### El criterio de salida de la fase 3, cumplido y demostrado
+
+`tests/no_allocation.rs` envuelve la llamada de mezcla con un asignador global
+contador. **Cero asignaciones** en los cuatro escenarios: régimen permanente, en
+plena rampa, por los caminos raros (pista silenciada, identificador desconocido,
+entrada rechazada) y bajo control concurrente desde otro hilo.
+
+Sin bloqueos por construcción: un test recorre el código fuente de la crate y
+falla si aparece un `Mutex`, `RwLock` o `Condvar`.
+
+### El arnés falló primero, y estaba mal el arnés
+
+La primera versión reportaba **1, 3 y 7 asignaciones**. No eran del mezclador:
+el contador era un atómico global y `cargo test` corre los tests en paralelo, así
+que cada test medía también las asignaciones de los demás.
+
+La tentación era exigir `--test-threads=1`. Se descartó: es una trampa que quien
+ejecute `cargo test --workspace` no puede saber que existe. El arreglo correcto
+es contar en un `thread_local` const-inicializado, y con eso pasa en paralelo.
+
+**Después se verificó que el arnés sigue detectando de verdad**, metiendo un
+`Vec::with_capacity` dentro de `mix`: los cuatro tests fallaron reportando
+exactamente una asignación por llamada —64 mezclas, 64 asignaciones—. La medida
+es exacta, no aproximada. Además hay un control negativo permanente que asigna a
+propósito y exige que el contador lo vea.
+
+### Un hallazgo de rendimiento de 12×
+
+La primera versión tardaba **50 µs** en mezclar 8 pistas: unos 3 ns por
+multiplicación-acumulación, cuando debería ser muy inferior al nanosegundo.
+
+La causa era `f32::mul_add`. Garantiza un solo redondeo, esa garantía necesita
+FMA en hardware, y **FMA no está en la línea base de `x86_64`**: sin
+`+fma`, el compilador emite una llamada a `fmaf` de libm por muestra, que además
+impide vectorizar. Cambiarlo por `a * b + c` da **12,3×**.
+
+Una segunda ronda partió el bloque en el tramo que la rampa recorre y el resto ya
+asentado, quitando la rama de "¿he llegado?": **otro 4×**. Con 10 ms de rampa en
+un bloque de 21,3 ms, más de la mitad del bloque pasaba por aritmética que no
+necesitaba.
+
+| Caso, 1024 muestras estéreo | Antes | Después |
+|---|---|---|
+| 8 pistas, asentado | 50,05 µs | **4,16 µs** |
+| 16 pistas, asentado | 100,2 µs | 7,78 µs |
+| 8 pistas, en rampa | 195,5 µs | **14,7 µs** |
+
+Ocho pistas cuestan el **0,02 % del bloque**. Detalle completo en
+`docs/PERFORMANCE.md` §3.7, incluido dónde más aparece `mul_add` sin medir.
+
+### Lo demás que se verificó
+
+Suma sin normalizar por número de pistas (diez pistas a 0,1 dan 1,0), sin recorte
+(dos a 0,8 dan 1,6 y el pico lo reporta), cancelación exacta de señales opuestas,
+silencio que no pierde la posición del fader, entrada corta que rellena lo que
+puede, identificador desconocido que se cuenta en vez de romper la mezcla, y
+frecuencia o disposición discordante rechazada en vez de sonar mal.
+
+Y el test que justifica la mejora nº 1: cerrar un fader de golpe entre bloques
+**no deja discontinuidad** — ni en la frontera entre bloques ni dentro del
+bloque, donde ningún par de muestras consecutivas se separa más que el paso de
+la rampa.
+
+## Desviaciones respecto al plan
+
+- **Se optimizó dentro del paso.** No estaba previsto, pero §4.8 pide medir y la
+  medición salió 12× peor de lo razonable por un error propio. Corregir un error
+  medido no es optimización prematura; los dos números están publicados.
+- **`ramp_step` desapareció** al partir el bucle: el paso se calcula donde se
+  usa y el tramo sale de `ramp_frames` directamente.
+- **Se añadió el test que prohíbe `Mutex` en la crate.** Es tosco —lee el propio
+  código fuente— pero el criterio de la fase dice "sin bloqueos" y no había forma
+  de comprobarlo en tiempo de ejecución. Falla el día que alguien añada uno.

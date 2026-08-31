@@ -282,11 +282,17 @@ de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 (§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
-**Fase 3 arrancada.** El plan 011 dejó el vocabulario de audio en `voltra-core`:
-`SampleRate` con aritmética exacta, `ChannelLayout`, los formatos de borde y
-`AudioBuffer` —float de 32 bits planar, una sola asignación—. Siguiente paso: el
-mezclador, que es el criterio de salida de la fase. Secuencia en
-`docs/ROADMAP.md`.
+**Fase 3 en curso.** El plan 011 dejó el vocabulario de audio en `voltra-core`
+—`SampleRate` con aritmética exacta, `ChannelLayout`, formatos de borde y
+`AudioBuffer`, float de 32 bits planar—, y el plan 012 el mezclador en
+`voltra-audio`: ganancia interpolada para que mover un fader no haga clic, y
+control desde otro hilo por atómicos.
+
+**El criterio de salida de la fase ya se cumple y está demostrado**, no
+afirmado: `voltra-audio/tests/no_allocation.rs` cuenta con un asignador global y
+exige cero asignaciones en la mezcla, y otro test falla si aparece un `Mutex` en
+la crate. Queda el resto de la fase: medidores y paneo, remuestreo, y la
+sincronía A/V. Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
