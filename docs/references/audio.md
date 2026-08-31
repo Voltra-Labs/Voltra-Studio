@@ -137,7 +137,53 @@ Esto es una decisión propia, no algo copiado: **no se verificó** si libobs
 interpola en la ruta aguas arriba donde aplica el volumen. Lo que sí se verificó
 es que en `mix_audio()` no hay interpolación.
 
-## 5. Resumen: qué adoptamos y qué mejoramos
+## 5. Medidores y balance en libobs
+
+Fuentes:
+[`libobs/obs-audio-controls.c`](https://github.com/obsproject/obs-studio/blob/master/libobs/obs-audio-controls.c)
+y [`libobs/obs-audio-controls.h`](https://github.com/obsproject/obs-studio/blob/master/libobs/obs-audio-controls.h).
+
+### El medidor
+
+`obs_volmeter` calcula **dos cosas por bloque y por canal**:
+
+- **Pico**, de dos maneras según `enum obs_peak_meter_type`:
+  `SAMPLE_PEAK_METER`, que es el máximo del valor absoluto de las muestras, y
+  `TRUE_PEAK_METER`, que sobremuestrea ×5 con interpolación de
+  Whittaker-Shannon sobre cuatro muestras para encontrar picos que caen *entre*
+  muestras.
+- **Magnitud**, que es la RMS: `sqrt(sum(sample²) / n)`.
+
+Ambos se convierten a decibelios y se ajustan por el volumen del usuario.
+
+**El hallazgo que marca el diseño: la balística no está aquí.** No hay
+constantes de caída ni de retención en `obs-audio-controls.c`; el campo
+`update_ms` de la estructura ni siquiera se usa. La caída, la retención de pico
+y el suavizado que se ven en OBS viven en su **interfaz**, no en el núcleo.
+
+Es la separación correcta y la adoptamos: el hilo de audio calcula números
+crudos y baratos; cómo se muestran —con qué caída, cuánto se retiene el pico— es
+política de presentación, y meterla en el camino de tiempo real sería poner
+decisiones de interfaz donde no puede haberlas.
+
+### Los faders
+
+`enum obs_fader_type` da tres curvas para mapear la posición de un fader a
+decibelios: `OBS_FADER_CUBIC` (x³), `OBS_FADER_IEC` (IEC 60-268-18, por tramos)
+y `OBS_FADER_LOG`. Son curvas de **interfaz**, no de proceso: el mezclador
+siempre recibe una ganancia lineal.
+
+### El balance está infraespecificado
+
+La API pública es `obs_source_set_balance_value(obs_source_t *, float balance)`,
+y su documentación entera es *"Sets the balance value for a stereo audio
+source"*. **Ni el rango ni la ley están documentados** en las cabeceras
+públicas, y no se encontró un `enum obs_balance_type` en las dos que se leyeron.
+
+Aquí no se copia lo que no se ha podido leer: la ley se elige, se documenta y se
+justifica en el plan 013.
+
+## 6. Resumen: qué adoptamos y qué mejoramos
 
 **Qué adoptamos:** float de 32 bits planar como formato interno único; el
 catálogo de disposiciones de altavoces de `speaker_layout`, para que una escena
