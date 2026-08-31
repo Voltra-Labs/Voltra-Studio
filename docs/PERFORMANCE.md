@@ -79,6 +79,11 @@ Mezcla, por el mismo bloque de 1024 muestras estéreo:
 | **Mezclar 8 pistas** | **4,16 µs** | **0,020 %** | 012 |
 | Mezclar 16 pistas | 7,78 µs | 0,037 % | 012 |
 | Mezclar 8 pistas, todas en rampa | 14,7 µs | 0,069 % | 012 |
+| Mezclar 1 pista, con medidor y balance | 5,80 µs | 0,027 % | 013 |
+| Mezclar 4 pistas, con medidor y balance | 14,6 µs | 0,069 % | 013 |
+| **Mezclar 8 pistas, con medidor y balance** | **25,9 µs** | **0,12 %** | 013 |
+| Mezclar 16 pistas, con medidor y balance | 48,3 µs | 0,23 % | 013 |
+| Mezclar 8 pistas en rampa, con medidor | 29,3 µs | 0,14 % | 013 |
 
 Dos observaciones, ninguna accionable todavía:
 
@@ -242,6 +247,39 @@ sin necesitarla.
 (`crates/voltra-core/src/audio/convert.rs`), en el camino de 8 bits sin signo.
 Es una por muestra y ese formato es raro; queda anotado, sin medir y sin tocar.
 En el camino de píxeles no aparece: el muestreo del plan 008 es entero.
+
+### 3.8 Medir la señal cuesta 6,3×, y dos intentos de arreglarlo salieron peor
+
+**Síntoma.** Añadir pico y RMS al bucle de mezcla llevó 8 pistas de **4,16 µs a
+26,3 µs**. El plan 013 había estimado que se duplicaría; se multiplicó por 6,3.
+
+Son tres operaciones más por muestra —valor absoluto, comparación y
+multiplicación-acumulación— sobre un bucle que hacía dos. La estimación estaba
+mal por no contar que el bucle original vectoriza y el medidor lo impide.
+
+**Intento 1: pico sin ramas.** El plan 008 midió que sustituir un `clamp` con
+ramas por uno sin ramas daba −28 %, así que la hipótesis era que
+`self.peak.max(magnitude)` batiría a `if magnitude > self.peak`.
+
+**Salió 1,8× peor: 26,3 → 46,5 µs.** `f32::max` en Rust lleva la semántica NaN
+de IEEE 754 —tiene que decidir qué devolver cuando un operando es NaN— y no
+compila a una sola `maxss`. La lección del plan 008 **no se transfiere**: allí lo
+que se quitaba era una cadena de `if/else if/else`, aquí lo que se metía era una
+función con casos especiales.
+
+**Intento 2: `mul_add` para la suma de cuadrados.** Salió **3× peor**
+(26,3 → 78,2 µs), por exactamente la misma razón que ya está escrita en §3.7:
+sin FMA en hardware es una llamada a `fmaf` por muestra.
+
+Es la segunda vez que este proyecto cae en `mul_add`, dos planes después de
+documentarlo. La conclusión práctica: **en un bucle por muestra o por píxel,
+`mul_add` es un error salvo que se compile con `+fma` y se mida**. Está anotado
+aquí y en el propio código.
+
+**Decisión.** Se queda la versión con rama y sin `mul_add`, que es la más rápida
+de las tres medidas. 25,9 µs es el **0,12 % del bloque** de 21,3 ms, y CLAUDE.md
+§4.10 pide las métricas internas siempre encendidas: un medidor que hay que
+activar es un medidor que nadie tiene activado cuando hace falta.
 
 ### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
 

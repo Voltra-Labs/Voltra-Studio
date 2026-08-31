@@ -291,8 +291,10 @@ control desde otro hilo por atómicos.
 **El criterio de salida de la fase ya se cumple y está demostrado**, no
 afirmado: `voltra-audio/tests/no_allocation.rs` cuenta con un asignador global y
 exige cero asignaciones en la mezcla, y otro test falla si aparece un `Mutex` en
-la crate. Queda el resto de la fase: medidores y paneo, remuestreo, y la
-sincronía A/V. Secuencia en `docs/ROADMAP.md`.
+la crate. El plan 013 añadió medidores de pico y RMS y balance por pista, con la
+balística deliberadamente fuera del núcleo —es donde libobs también la deja—.
+Queda remuestreo y sincronía A/V para cerrar la fase. Secuencia en
+`docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

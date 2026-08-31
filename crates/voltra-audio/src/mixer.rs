@@ -25,9 +25,11 @@
 
 use std::sync::Arc;
 
-use voltra_core::{AudioBuffer, ChannelLayout, Error, Result, SampleRate};
+use voltra_core::{AudioBuffer, ChannelLayout, Error, MAX_CHANNELS, Result, SampleRate};
 
+use crate::balance::Balance;
 use crate::gain::Gain;
+use crate::level::{ChannelLevel, LevelAccumulator, LevelPublisher, Levels};
 use crate::track::{TrackControl, TrackHandle, TrackId};
 
 /// How long a gain change takes to complete, in milliseconds.
@@ -42,11 +44,15 @@ const RAMP_MILLIS: f32 = 10.0;
 struct Track {
     id: TrackId,
     control: Arc<TrackControl>,
-    /// The gain actually applied to the last sample of the previous block.
+    /// The gain applied to the last sample of the previous block, per channel.
+    ///
+    /// Per channel because gain and balance are folded together: the effective
+    /// multiplier for channel `c` is `gain × balance.gain_for(c)`, so one ramp
+    /// mechanism covers both and neither can click.
     ///
     /// Kept here rather than read from the control so a ramp continues smoothly
     /// across a block boundary instead of restarting.
-    current: f32,
+    current: [f32; MAX_CHANNELS],
 }
 
 /// One track's contribution to a block.
@@ -77,7 +83,7 @@ pub struct MixStats {
     pub skipped: u32,
     /// Inputs refused because their rate or layout did not match the mixer.
     pub rejected: u32,
-    /// Tracks whose gain was still moving toward its target.
+    /// Tracks whose gain or balance was still moving toward its target.
     pub ramping: u32,
     /// The largest absolute sample in the output.
     ///
@@ -118,6 +124,8 @@ pub struct Mixer {
     tracks: Vec<Track>,
     next_id: u32,
     stats: MixStats,
+    /// Levels of the finished mix, for whoever is watching the master.
+    levels: LevelPublisher,
 }
 
 impl Mixer {
@@ -141,6 +149,7 @@ impl Mixer {
             tracks: Vec::with_capacity(capacity),
             next_id: 0,
             stats: MixStats::default(),
+            levels: LevelPublisher::new(),
         })
     }
 
@@ -168,6 +177,16 @@ impl Mixer {
         self.stats
     }
 
+    /// The levels of the finished mix, per channel.
+    ///
+    /// These are the levels of the *sum*, not the sum of the tracks' levels —
+    /// two tracks peaking at 0.5 can sum to anything between 0 and 1 depending
+    /// on whether they agree.
+    #[must_use]
+    pub fn levels(&self) -> Levels {
+        self.levels.read(self.layout.channels())
+    }
+
     /// Add a track, returning its identifier and the interface's handle.
     ///
     /// **Control plane**: this allocates and is called from the interface
@@ -190,7 +209,7 @@ impl Mixer {
             control,
             // Start at the target rather than at zero, so a track added
             // mid-session does not fade in unasked.
-            current: Gain::UNITY.linear(),
+            current: [Gain::UNITY.linear(); MAX_CHANNELS],
         });
         Ok((id, handle))
     }
@@ -234,48 +253,79 @@ impl Mixer {
         let mut stats = MixStats::default();
         out.silence();
         let frames = out.frames();
-
-        // One atomic read per track per block — 47 reads a second at 48 kHz,
-        // not one per sample.
+        let channels = self.layout.channels();
         let ramp_frames = self.ramp_frames();
 
         for track in &mut self.tracks {
-            let target = track.control.target().linear();
+            // One atomic read per control per track per block — 47 a second at
+            // 48 kHz, not one per sample.
+            let gain = track.control.target().linear();
+            let balance = track.control.balance();
 
             let Some(input) = inputs.iter().find(|input| input.track == track.id) else {
-                // No samples this block. The gain still moves, so a fader
+                // No samples this block. The gain still arrives, so a fader
                 // dragged while a track is silent is already where the user put
                 // it when audio comes back.
-                track.current = target;
+                settle(&mut track.current, gain, balance, channels);
+                track.control.levels.publish_silence(channels);
                 continue;
             };
             if input.samples.rate() != self.rate || input.samples.layout() != self.layout {
                 stats.rejected += 1;
-                track.current = target;
+                settle(&mut track.current, gain, balance, channels);
+                track.control.levels.publish_silence(channels);
                 continue;
             }
 
             let usable = frames.min(input.samples.frames());
-            if settled(track.current, target) {
-                if target == 0.0 {
-                    stats.skipped += 1;
-                    continue;
+            let mut contributed = false;
+            let mut ramping = false;
+
+            for (index, (source, slot)) in
+                input.samples.channels().zip(out.channels_mut()).enumerate()
+            {
+                let target = gain * balance.gain_for(index);
+                let current = track.current.get(index).copied().unwrap_or(target);
+
+                let (reached, level) = if settled(current, target) {
+                    if target == 0.0 {
+                        (target, ChannelLevel::SILENT)
+                    } else {
+                        contributed = true;
+                        (
+                            target,
+                            add_scaled(&source[..usable], &mut slot[..usable], target),
+                        )
+                    }
+                } else {
+                    contributed = true;
+                    let (reached, level) = add_ramped(
+                        &source[..usable],
+                        &mut slot[..usable],
+                        current,
+                        target,
+                        ramp_frames,
+                    );
+                    if !settled(reached, target) {
+                        ramping = true;
+                    }
+                    (reached, level)
+                };
+
+                if let Some(slot) = track.current.get_mut(index) {
+                    *slot = reached;
                 }
-                add_scaled(input.samples, out, usable, target);
-            } else {
-                track.current = add_ramped(
-                    input.samples,
-                    out,
-                    usable,
-                    track.current,
-                    target,
-                    ramp_frames,
-                );
-                if !settled(track.current, target) {
-                    stats.ramping += 1;
-                }
+                track.control.levels.publish(index, level);
             }
-            stats.mixed += 1;
+
+            if contributed {
+                stats.mixed += 1;
+            } else {
+                stats.skipped += 1;
+            }
+            if ramping {
+                stats.ramping += 1;
+            }
         }
 
         stats.skipped += u32::try_from(
@@ -286,7 +336,20 @@ impl Mixer {
         )
         .unwrap_or(u32::MAX);
 
-        stats.peak = peak_of(out);
+        // The master meter needs its own pass: the output is written by every
+        // track, so nothing knows the sum until they have all finished.
+        let mut peak = 0.0f32;
+        for (index, channel) in out.channels().enumerate() {
+            let mut accumulator = LevelAccumulator::default();
+            for sample in channel {
+                accumulator.push(*sample);
+            }
+            let level = accumulator.finish(frames);
+            peak = peak.max(level.peak);
+            self.levels.publish(index, level);
+        }
+
+        stats.peak = peak;
         self.stats = stats;
         Ok(())
     }
@@ -319,38 +382,50 @@ fn settled(current: f32, target: f32) -> bool {
     current == target
 }
 
-/// `out += input * gain`, with the gain constant. The common case.
-fn add_scaled(input: &AudioBuffer, out: &mut AudioBuffer, frames: usize, gain: f32) {
-    for (source, target) in input.channels().zip(out.channels_mut()) {
-        for (sample, slot) in source[..frames].iter().zip(target[..frames].iter_mut()) {
-            *slot += sample * gain;
-        }
+/// Snap every channel's gain to where it would end up, for a block that
+/// produced no samples.
+fn settle(current: &mut [f32; MAX_CHANNELS], gain: f32, balance: Balance, channels: usize) {
+    for (index, slot) in current.iter_mut().take(channels).enumerate() {
+        *slot = gain * balance.gain_for(index);
     }
 }
 
-/// `out += input * gain`, with the gain walking toward `target`.
+/// `out += input * gain` for one channel, with the gain constant.
+///
+/// Returns what the channel contributed, measured on the way past: folding the
+/// meter into this loop costs one pass instead of two.
+fn add_scaled(input: &[f32], out: &mut [f32], gain: f32) -> ChannelLevel {
+    let mut accumulator = LevelAccumulator::default();
+    for (sample, slot) in input.iter().zip(out.iter_mut()) {
+        let contribution = sample * gain;
+        accumulator.push(contribution);
+        *slot += contribution;
+    }
+    accumulator.finish(input.len())
+}
+
+/// `out += input * gain` for one channel, with the gain walking toward
+/// `target`.
 ///
 /// The block is split in two: the samples the ramp actually spans, and the
 /// settled remainder. That is not only faster — neither loop carries the
-/// "have I arrived yet" branch, so both vectorise — it is also more honest about
-/// what happens. A 10 ms ramp inside a 21.3 ms block means more than half the
-/// block is already at the target, and running it through ramp arithmetic was
-/// pretending otherwise.
+/// "have I arrived yet" branch — it is also more honest about what happens. A
+/// 10 ms ramp inside a 21.3 ms block means more than half the block is already
+/// at the target, and running it through ramp arithmetic was pretending
+/// otherwise.
 ///
 /// Returns the gain reached, so the next block continues from here rather than
-/// restarting the ramp.
+/// restarting the ramp, and what the channel contributed.
 fn add_ramped(
-    input: &AudioBuffer,
-    out: &mut AudioBuffer,
-    frames: usize,
+    input: &[f32],
+    out: &mut [f32],
     start: f32,
     target: f32,
     ramp_frames: f32,
-) -> f32 {
+) -> (f32, ChannelLevel) {
     let step = (target - start) / ramp_frames;
     if step == 0.0 {
-        add_scaled(input, out, frames, target);
-        return target;
+        return (target, add_scaled(input, out, target));
     }
 
     // How many samples until the gain arrives. `step` was chosen to cross the
@@ -362,44 +437,31 @@ fn add_ramped(
         clippy::cast_sign_loss,
         reason = "ramp_frames is positive and small, and the result is clamped to the block"
     )]
-    let span = (ramp_frames.ceil() as usize).min(frames);
+    let span = (ramp_frames.ceil() as usize).min(input.len());
 
-    // Where the ramp left off. Taken from the loop rather than recomputed as
-    // `start + step * span`, which would need a cast and could disagree with
-    // what the loop actually applied.
-    let mut reached = start;
-
-    for (source, slot) in input.channels().zip(out.channels_mut()) {
-        // Every channel walks the same ramp, so each starts from the same place.
-        let mut gain = start;
-        for (sample, out_sample) in source[..span].iter().zip(slot[..span].iter_mut()) {
-            *out_sample += sample * gain;
-            gain += step;
-        }
-        // The settled tail: no ramp arithmetic, no branch.
-        for (sample, out_sample) in source[span..frames]
-            .iter()
-            .zip(slot[span..frames].iter_mut())
-        {
-            *out_sample += sample * target;
-        }
-        reached = gain;
+    let mut accumulator = LevelAccumulator::default();
+    let mut gain = start;
+    for (sample, slot) in input[..span].iter().zip(out[..span].iter_mut()) {
+        let contribution = sample * gain;
+        accumulator.push(contribution);
+        *slot += contribution;
+        gain += step;
+    }
+    // The settled tail: no ramp arithmetic, no branch.
+    for (sample, slot) in input[span..].iter().zip(out[span..].iter_mut()) {
+        let contribution = sample * target;
+        accumulator.push(contribution);
+        *slot += contribution;
     }
 
-    if span < frames { target } else { reached }
-}
-
-/// The largest absolute sample in `buffer`.
-fn peak_of(buffer: &AudioBuffer) -> f32 {
-    buffer
-        .as_slice()
-        .iter()
-        .fold(0.0f32, |worst, sample| worst.max(sample.abs()))
+    let reached = if span < input.len() { target } else { gain };
+    (reached, accumulator.finish(input.len()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{MixInput, Mixer, RAMP_MILLIS};
+    use crate::balance::Balance;
     use crate::gain::Gain;
     use crate::track::TrackId;
     use voltra_core::{AudioBuffer, ChannelLayout, SampleRate, Timestamp};
@@ -677,6 +739,170 @@ mod tests {
         assert!(!mixer.remove_track(a));
         assert_eq!(mixer.track_count(), 1);
         assert_ne!(a, b);
+    }
+
+    // ------------------------------------------------- balance and metering
+
+    /// Balance multiplies the gain rather than replacing it: a track at −6 dB
+    /// panned half right should be at −6 dB on the right and half of that on
+    /// the left.
+    #[test]
+    fn balance_composes_with_gain() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+        fader.set_gain(Gain::from_db(-6.0));
+        fader.set_balance(Balance::from_position(0.5).unwrap());
+
+        let source = buffer(2048, 1.0);
+        let mut out = buffer(2048, 0.0);
+        // Two blocks: the first ramps, the second is settled.
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+
+        let expected_right = Gain::from_db(-6.0).linear();
+        let expected_left = expected_right * 0.5;
+        assert!((out.channel(0).unwrap()[0] - expected_left).abs() < 1e-5);
+        assert!((out.channel(1).unwrap()[0] - expected_right).abs() < 1e-5);
+    }
+
+    #[test]
+    fn hard_left_silences_the_right_channel() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+        fader.set_balance(Balance::from_position(-1.0).unwrap());
+
+        let source = buffer(2048, 0.5);
+        let mut out = buffer(2048, 0.0);
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+
+        assert!(
+            out.channel(0)
+                .unwrap()
+                .iter()
+                .all(|s| (s - 0.5).abs() < 1e-6)
+        );
+        assert!(out.channel(1).unwrap().iter().all(|&s| s == 0.0));
+    }
+
+    /// Balance is folded into the per-channel gain, so it inherits the ramp and
+    /// cannot click either. Same assertion as the gain test, on the other
+    /// control.
+    #[test]
+    fn a_balance_change_leaves_no_discontinuity() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+
+        let source = buffer(1024, 1.0);
+        let mut out = buffer(1024, 0.0);
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        let last = out.channel(1).unwrap()[1023];
+
+        // Slam the balance hard left, which shuts the right channel.
+        fader.set_balance(Balance::from_position(-1.0).unwrap());
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        let right = out.channel(1).unwrap();
+
+        assert!((right[0] - last).abs() <= ramp_step() * 2.0);
+        let tolerance = ramp_step() * 1.5;
+        for window in right.windows(2) {
+            assert!((window[1] - window[0]).abs() <= tolerance);
+        }
+    }
+
+    /// A track meter shows what the track contributes, not what arrived: a
+    /// source at 1.0 through a −6 dB fader reads −6 dB, not 0.
+    #[test]
+    fn track_levels_are_measured_after_gain_and_balance() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+        fader.set_gain(Gain::from_db(-6.0));
+        fader.set_balance(Balance::from_position(-1.0).unwrap());
+
+        let source = buffer(2048, 1.0);
+        let mut out = buffer(2048, 0.0);
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+
+        let levels = fader.levels(2);
+        let left = levels.channel(0).unwrap();
+        let right = levels.channel(1).unwrap();
+
+        assert!(
+            (left.peak_db() + 6.0).abs() < 0.1,
+            "left was {}",
+            left.peak_db()
+        );
+        // Constant input, so RMS and peak agree.
+        assert!((left.rms - left.peak).abs() < 1e-5);
+        assert_eq!(right, crate::level::ChannelLevel::SILENT);
+        assert!(!levels.is_clipping());
+    }
+
+    /// The master meter measures the sum. Two tracks peaking at 0.5 that agree
+    /// sum to 1.0; the sum of their *levels* would say the same thing here only
+    /// by coincidence, so the opposite case is checked too.
+    #[test]
+    fn master_levels_are_of_the_sum_not_the_sum_of_levels() {
+        let mut mixer = mixer();
+        let (a, _fa) = mixer.add_track().unwrap();
+        let (b, _fb) = mixer.add_track().unwrap();
+
+        let positive = buffer(64, 0.5);
+        let negative = buffer(64, -0.5);
+        let mut out = buffer(64, 0.0);
+
+        // Agreeing: the sum is 1.0 even though each track peaks at 0.5.
+        mixer
+            .mix(
+                &[MixInput::new(a, &positive), MixInput::new(b, &positive)],
+                &mut out,
+            )
+            .unwrap();
+        assert!((mixer.levels().peak() - 1.0).abs() < 1e-5);
+        assert!(mixer.levels().is_clipping());
+
+        // Cancelling: each track still peaks at 0.5, but the mix is silent.
+        mixer
+            .mix(
+                &[MixInput::new(a, &positive), MixInput::new(b, &negative)],
+                &mut out,
+            )
+            .unwrap();
+        assert_eq!(mixer.levels().peak(), 0.0);
+        assert!(!mixer.levels().is_clipping());
+    }
+
+    /// A track that contributed nothing must read silent rather than keep
+    /// showing the last block it played.
+    #[test]
+    fn a_track_with_no_input_reads_silent() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+        let source = buffer(64, 0.9);
+        let mut out = buffer(64, 0.0);
+
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+        assert!(fader.levels(2).peak() > 0.0);
+
+        mixer.mix(&[], &mut out).unwrap();
+        assert_eq!(fader.levels(2).peak(), 0.0);
+    }
+
+    /// The interface reads meters from its own thread while audio runs.
+    #[test]
+    fn levels_can_be_read_from_another_thread() {
+        let mut mixer = mixer();
+        let (id, fader) = mixer.add_track().unwrap();
+        let source = buffer(256, 0.5);
+        let mut out = buffer(256, 0.0);
+        mixer.mix(&[MixInput::new(id, &source)], &mut out).unwrap();
+
+        let far = fader.clone();
+        let peak = std::thread::spawn(move || far.levels(2).peak())
+            .join()
+            .unwrap();
+        assert!(peak > 0.0);
     }
 
     #[test]

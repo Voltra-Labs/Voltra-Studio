@@ -14,7 +14,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+use crate::balance::Balance;
 use crate::gain::Gain;
+use crate::level::{LevelPublisher, Levels};
 
 /// Identifies a track inside one mixer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -51,14 +53,20 @@ pub(crate) struct TrackControl {
     /// There is no `AtomicF32`, and this is the standard way round it: the bit
     /// pattern is what is shared, and both sides agree it is a float.
     gain_bits: AtomicU32,
+    /// The target balance position, as the bits of an `f32`.
+    balance_bits: AtomicU32,
     muted: AtomicBool,
+    /// Where the mixer leaves this track's levels for the interface.
+    pub(crate) levels: LevelPublisher,
 }
 
 impl TrackControl {
     fn new(gain: Gain) -> Self {
         Self {
             gain_bits: AtomicU32::new(gain.linear().to_bits()),
+            balance_bits: AtomicU32::new(Balance::CENTRE.position().to_bits()),
             muted: AtomicBool::new(false),
+            levels: LevelPublisher::new(),
         }
     }
 
@@ -72,6 +80,14 @@ impl TrackControl {
         // negative or NaN; falling back to silence keeps the mixer total even if
         // that ever stopped being true.
         Gain::from_linear(linear).unwrap_or(Gain::SILENT)
+    }
+
+    /// The target balance.
+    pub(crate) fn balance(&self) -> Balance {
+        let position = f32::from_bits(self.balance_bits.load(Ordering::Relaxed));
+        // As with the gain: the setter only stores a validated `Balance`, and
+        // falling back to centre keeps the mix intact if that ever changed.
+        Balance::from_position(position).unwrap_or(Balance::CENTRE)
     }
 }
 
@@ -149,12 +165,42 @@ impl TrackHandle {
     pub fn is_muted(&self) -> bool {
         self.control.muted.load(Ordering::Relaxed)
     }
+
+    /// Set where the track sits between the speakers.
+    ///
+    /// Ramped rather than jumped, like the gain: the two are folded into one
+    /// per-channel gain, so moving either cannot click.
+    pub fn set_balance(&self, balance: Balance) {
+        self.control
+            .balance_bits
+            .store(balance.position().to_bits(), Ordering::Relaxed);
+    }
+
+    /// Where the track sits between the speakers.
+    #[must_use]
+    pub fn balance(&self) -> Balance {
+        self.control.balance()
+    }
+
+    /// What this track contributed to the last block, per channel.
+    ///
+    /// Measured after gain, balance and mute, which is what a channel meter is
+    /// expected to show: the track's contribution to the mix rather than what
+    /// arrived at its input.
+    ///
+    /// Reading never blocks the audio thread and is never blocked by it.
+    #[must_use]
+    pub fn levels(&self, channels: usize) -> Levels {
+        self.control.levels.read(channels)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{TrackHandle, TrackId};
+    use crate::balance::Balance;
     use crate::gain::Gain;
+    use crate::level::ChannelLevel;
 
     #[test]
     fn a_handle_reads_back_what_it_set() {
@@ -191,6 +237,36 @@ mod tests {
             .join()
             .unwrap();
         assert!(control.target().is_silent());
+    }
+
+    /// Balance travels the same lock-free way the gain does.
+    #[test]
+    fn balance_crosses_the_handle_too() {
+        let (handle, control) = TrackHandle::new(TrackId::from_raw(2), Gain::UNITY);
+        assert_eq!(handle.balance(), Balance::CENTRE);
+
+        let hard_left = Balance::from_position(-1.0).unwrap();
+        handle.set_balance(hard_left);
+        assert_eq!(handle.balance(), hard_left);
+        assert_eq!(control.balance(), hard_left);
+    }
+
+    /// A handle reads the levels the mixer published, without a lock either way.
+    #[test]
+    fn levels_come_back_through_the_handle() {
+        let (handle, control) = TrackHandle::new(TrackId::from_raw(5), Gain::UNITY);
+        assert_eq!(handle.levels(2).peak(), 0.0);
+
+        control.levels.publish(
+            0,
+            ChannelLevel {
+                peak: 0.5,
+                rms: 0.25,
+            },
+        );
+        let levels = handle.levels(2);
+        assert!((levels.peak() - 0.5).abs() < 1e-6);
+        assert!((levels.channel(0).unwrap().rms - 0.25).abs() < 1e-6);
     }
 
     #[test]

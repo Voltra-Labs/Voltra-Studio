@@ -28,7 +28,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use voltra_audio::{ChannelLayout, Gain, MixInput, Mixer, SampleRate};
+use std::hint::black_box;
+
+use voltra_audio::{Balance, ChannelLayout, Gain, MixInput, Mixer, SampleRate};
 use voltra_core::{AudioBuffer, Timestamp};
 
 thread_local! {
@@ -266,6 +268,42 @@ fn control_from_another_thread_allocates_nothing_in_the_mixer() {
         count, 0,
         "mixing under concurrent control allocated {count} times"
     );
+}
+
+/// Metering and balance were added after the zero-allocation rule was already
+/// in force, so they get their own measurement rather than riding on the
+/// others: publishing a level is an atomic store into a fixed array, and
+/// balance folds into the per-channel gain. Neither may allocate, and the
+/// balance is moved every block so the ramp path is covered too.
+#[test]
+fn metering_and_balance_allocate_nothing() {
+    let mut mixer = Mixer::new(RATE, ChannelLayout::Stereo, 4).unwrap();
+    let (id, fader) = mixer.add_track().unwrap();
+
+    let source = buffer(0.6);
+    let inputs = [MixInput::new(id, &source)];
+    let mut out = buffer(0.0);
+    mixer.mix(&inputs, &mut out).unwrap();
+
+    let positions = [
+        Balance::CENTRE,
+        Balance::from_position(-1.0).unwrap(),
+        Balance::from_position(0.75).unwrap(),
+    ];
+
+    let ((), count) = allocations_during(|| {
+        for step in 0..48 {
+            fader.set_balance(positions[step % positions.len()]);
+            mixer.mix(&inputs, &mut out).unwrap();
+            // Reading the meters is the interface's job, but it must not
+            // allocate either — a meter read per frame would otherwise be a
+            // steady drip of garbage.
+            black_box(fader.levels(2));
+            black_box(mixer.levels());
+        }
+    });
+
+    assert_eq!(count, 0, "metering and balance allocated {count} times");
 }
 
 /// Nothing in this crate may hold a lock: the audio thread cannot wait on

@@ -1,7 +1,7 @@
 # 013 — Medidores y balance: la banda de canal
 
 - **Fase:** 3
-- **Estado:** en curso
+- **Estado:** completado (2026-08-31) — ver Resultado
 
 ## Objetivo
 
@@ -135,3 +135,72 @@ medidor está medido contra la cifra del plan 012 (4,16 µs con 8 pistas).
 - **La RMS por bloque es una RMS de 21 ms**, no la de una ventana perceptual.
   Para un medidor de mezcla es lo correcto y es lo que hace OBS; para medir
   sonoridad de programa hace falta otra cosa (BS.1770), y eso no es esto.
+
+## Resultado
+
+Puerta de calidad en verde: **242 tests** (desde 216), `clippy -D warnings` y
+`fmt` limpios. `voltra-audio` pasa de 24 a 46 tests unitarios, de 6 a 7 de
+asignación, y de 3 a 4 doctests.
+
+### Lo que quedó hecho
+
+- `Balance` con rango declarado y ley documentada, y `TrackHandle::set_balance`.
+- `ChannelLevel`, `Levels` y publicación atómica por pista y de la mezcla.
+- Gain y balance **plegados en una sola ganancia por canal**, así que la rampa
+  del plan 012 cubre los dos sin mecanismo nuevo: mover el balance de golpe
+  tampoco hace clic, y hay test para ello.
+- El test de asignación cero cubre además medición y balance, con lectura de
+  medidores incluida.
+
+### El coste, y la estimación que estaba mal
+
+El plan estimó que medir duplicaría el coste. **Lo multiplicó por 6,3**: 8
+pistas pasan de 4,16 µs a 25,9 µs. La estimación no contaba con que el bucle
+original vectoriza y el medidor lo impide.
+
+| Caso, 1024 muestras estéreo | Plan 012 | Plan 013 |
+|---|---|---|
+| 1 pista, asentado | 1,31 µs | 5,80 µs |
+| **8 pistas, asentado** | **4,16 µs** | **25,9 µs** |
+| 16 pistas, asentado | 7,78 µs | 48,3 µs |
+| 8 pistas, en rampa | 14,7 µs | 29,3 µs |
+
+En absoluto sigue siendo pequeño: 25,9 µs es el **0,12 %** de un bloque de
+21,3 ms. Se queda encendido, porque CLAUDE.md §4.10 pide las métricas siempre
+encendidas y un medidor que hay que activar es un medidor apagado cuando hace
+falta.
+
+### Dos intentos de arreglarlo, los dos peores
+
+Detalle completo en `docs/PERFORMANCE.md` §3.8.
+
+1. **Pico sin ramas** (`f32::max` en vez de `if`): **1,8× peor**, 26,3 → 46,5 µs.
+   `f32::max` lleva la semántica NaN de IEEE 754 y no compila a una sola
+   instrucción. La lección del plan 008 —el `clamp` sin ramas, −28 %— **no se
+   transfiere**: allí se quitaba una cadena de `if/else if/else`, aquí se metía
+   una función con casos especiales.
+2. **`mul_add` para la suma de cuadrados**: **3× peor**, 26,3 → 78,2 µs. Es la
+   segunda vez que este proyecto cae en `mul_add`, dos planes después de
+   documentarlo en §3.7. Queda anotado en el código además de en el registro.
+
+Los dos están escritos porque un experimento fallido sin documentar es tiempo
+que alguien volverá a perder — y en este caso ya lo perdí yo dos veces.
+
+### Lo demás que se verificó
+
+La ley del balance fija con un test que recorre las 201 posiciones y exige que
+**ninguna suba ningún canal**: si alguien cambia a potencia constante, falla. La
+RMS se comprueba contra una senoide, donde tiene que dar 1/√2 ≈ 0,707 y no 2/π
+≈ 0,637, que es lo que daría una media de valores absolutos. Los niveles de la
+mezcla son los de la suma y no la suma de los niveles: dos pistas a 0,5 que
+coinciden dan 1,0 y saturan, y las mismas dos en oposición dan 0.
+
+## Desviaciones respecto al plan
+
+- **La estimación de coste del plan estaba mal por 3×.** Está arriba con el
+  número real.
+- **`Balance::gain_for` deja en paz los canales más allá del estéreo.** No
+  estaba previsto: un control de balance habla del campo estéreo, y atenuar en
+  silencio un canal de surround con él sería una sorpresa.
+- **`Levels::silent` y `publish_silence`** aparecieron al descubrir que una
+  pista sin entrada seguía mostrando el último bloque que sonó. Tiene test.

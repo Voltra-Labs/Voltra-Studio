@@ -18,11 +18,15 @@
 // where a value is genuinely computed, the tests use a tolerance explicitly.
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+mod balance;
 mod gain;
+mod level;
 mod mixer;
 mod track;
 
+pub use balance::Balance;
 pub use gain::Gain;
+pub use level::{ChannelLevel, Levels};
 pub use mixer::{MixInput, MixStats, Mixer};
 pub use track::{TrackHandle, TrackId};
 
