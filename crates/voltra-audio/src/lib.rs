@@ -23,6 +23,7 @@ mod gain;
 mod level;
 mod mixer;
 mod resample;
+mod sync;
 mod track;
 
 pub use balance::Balance;
@@ -30,6 +31,7 @@ pub use gain::Gain;
 pub use level::{ChannelLevel, Levels};
 pub use mixer::{MixInput, MixStats, Mixer};
 pub use resample::{ResampleRatio, Resampler};
+pub use sync::{AudioClock, AvSync, FrameFate, SyncOffset, SyncStats};
 pub use track::{TrackHandle, TrackId};
 
 // Re-exported so a caller configuring a mixer does not need `voltra-core` in

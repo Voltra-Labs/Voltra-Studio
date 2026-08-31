@@ -1,7 +1,7 @@
 # 015 — Sincronía A/V
 
 - **Fase:** 3 (la cierra)
-- **Estado:** en curso
+- **Estado:** completado (2026-08-31) — cierra la fase 3. Ver Resultado
 
 ## Objetivo
 
@@ -155,3 +155,52 @@ frames que la cadencia implica, ±1, y ninguna frontera queda sin test.
 - **La tolerancia de medio frame puede oscilar** cuando la cadencia de vídeo y
   la del audio son casi coprimas: un frame podría alternar entre presentado y
   mantenido. La simulación larga es justo lo que lo detectaría, contando.
+
+## Resultado
+
+Puerta de calidad en verde: **273 tests** (desde 260), `clippy -D warnings` y
+`fmt` limpios. **La fase 3 queda cerrada.**
+
+### Lo que quedó hecho
+
+- `AudioClock`: cuenta muestras, deriva el tiempo. Exacto a las diez horas y
+  monótono por construcción.
+- `SyncOffset`: con signo, acotado a ±5 s, y **el sentido fijado por un test
+  escrito en términos de lo que ve una persona**, no de qué lado va el signo.
+- `AvSync::classify`: función pura de dos marcas de tiempo a `Early`, `OnTime`,
+  `Late` o `Dropout`, con las tres fronteras comprobadas por los dos lados.
+- `SyncStats`: presentados, mantenidos, descartados, dropouts y deriva.
+
+### El criterio de aceptación
+
+Un minuto de vídeo a 29,97 fps contra un reloj de 48 kHz, en bloques de 1024
+muestras —21,3 ms, deliberadamente no múltiplo del periodo de frame, para que
+las dos rejillas no coincidan nunca—: **1 799 frames presentados, cero
+dropouts**, que es exactamente lo que implica la cadencia.
+
+### Otro test mío que estaba mal, el tercero
+
+Esperaba 1 797 y salieron 1 799. El código tenía razón las dos veces que fallé:
+
+- Un frame que vence dentro de **medio periodo por delante** se presenta ya, que
+  es lo que significa la tolerancia. El horizonte es `elapsed + tolerancia`, no
+  `elapsed`.
+- Los índices empiezan en cero, así que el conteo es el último índice **más uno**.
+
+Comprobado con la aritmética aparte antes de tocar nada:
+`(59,989 + 0,0167) × 29,97 + 1 = 1 799`. La expectativa era mía y estaba
+incompleta.
+
+Van tres planes seguidos —012, 014, 015— en los que **el arnés de verificación
+falló antes que el código**. En los tres, lo barato habría sido ajustar el código
+hasta que el test pasara. Merece la pena decirlo en voz alta: cuando un test
+falla contra código recién escrito, la hipótesis por defecto no puede ser que el
+código está mal.
+
+## Desviaciones respecto al plan
+
+- **Se quitó `describes_same_stream`**, un ayudante que escribí y que no tenía
+  ningún consumidor. Es la regla que yo mismo puse en el plan 011: cada tipo
+  necesita un consumidor nombrado.
+- **`SyncStats::ZERO`** en vez de `Default::default()`, para poder resetear los
+  contadores desde una función `const`.

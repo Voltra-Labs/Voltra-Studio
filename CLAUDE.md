@@ -282,20 +282,23 @@ de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 (§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
-**Fase 3 en curso.** El plan 011 dejó el vocabulario de audio en `voltra-core`
+**Fase 3 cerrada.** El plan 011 dejó el vocabulario de audio en `voltra-core`
 —`SampleRate` con aritmética exacta, `ChannelLayout`, formatos de borde y
 `AudioBuffer`, float de 32 bits planar—, y el plan 012 el mezclador en
 `voltra-audio`: ganancia interpolada para que mover un fader no haga clic, y
 control desde otro hilo por atómicos.
 
-**El criterio de salida de la fase ya se cumple y está demostrado**, no
-afirmado: `voltra-audio/tests/no_allocation.rs` cuenta con un asignador global y
-exige cero asignaciones en la mezcla, y otro test falla si aparece un `Mutex` en
-la crate. El plan 013 añadió medidores de pico y RMS y balance por pista, con la
-balística deliberadamente fuera del núcleo —es donde libobs también la deja—.
-El plan 014 añadió remuestreo polifásico de razón fija, así que una fuente a
-44,1 kHz ya entra en un mezclador a 48 kHz. Queda la sincronía A/V para cerrar
-la fase. Secuencia en `docs/ROADMAP.md`.
+**El criterio de salida se cumple y está demostrado**, no afirmado:
+`voltra-audio/tests/no_allocation.rs` cuenta con un asignador global y exige cero
+asignaciones en la mezcla, y otro test falla si aparece un `Mutex` en la crate.
+El plan 013 añadió medidores de pico y RMS y balance por pista, con la balística
+deliberadamente fuera del núcleo —donde libobs también la deja—; el 014,
+remuestreo polifásico, así que una fuente a 44,1 kHz ya entra en un mezclador a
+48 kHz; y el 015 el reloj maestro y la política de sincronía A/V, que es una
+función pura de dos marcas de tiempo y por eso se puede comprobar entera.
+
+**Siguiente: fase 4, salida a fichero** — codificación y muxing, para que grabar
+deje de costar los 187 MB/s de Y4M. Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

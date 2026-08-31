@@ -71,10 +71,11 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   (plan 012, hecho).
 - Medidores de pico y RMS, y balance por pista (plan 013, hecho).
 - Remuestreo polifásico de razón fija (plan 014, hecho).
-- Sincronía A/V anclada al reloj de audio.
+- Reloj maestro de audio y política de sincronía A/V (plan 015, hecho).
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
   **Cumplido y demostrado** por `voltra-audio/tests/no_allocation.rs`, que
   cuenta asignaciones con un asignador global.
+- **Fase cerrada.**
 
 ## Fase 4 — Salida a fichero
 - Codificación de vídeo y audio, muxing, grabación real reproducible.
