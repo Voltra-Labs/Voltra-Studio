@@ -183,7 +183,48 @@ públicas, y no se encontró un `enum obs_balance_type` en las dos que se leyero
 Aquí no se copia lo que no se ha podido leer: la ley se elige, se documenta y se
 justifica en el plan 013.
 
-## 6. Resumen: qué adoptamos y qué mejoramos
+## 6. Remuestreo en libobs
+
+Fuente: [`libobs/media-io/audio-resampler-ffmpeg.c`](https://github.com/obsproject/obs-studio/blob/master/libobs/media-io/audio-resampler-ffmpeg.c).
+
+libobs **no remuestrea: delega**. Su `audio_resampler` es una envoltura fina
+sobre `SwrContext` de libswresample (FFmpeg). Se configura con
+`swr_alloc_set_opts2` —frecuencias, formatos y disposiciones de origen y
+destino—, se abre con `swr_init`, y cada bloque pasa por `swr_convert`, que
+**devuelve cuántas muestras produjo de verdad**.
+
+No se le pasa **ningún ajuste de calidad**: se usan los valores por omisión de
+swresample. Lo único que se configura a mano es una matriz de mezcla para subir
+mono a multicanal.
+
+### El detalle que marca el diseño: la latencia se reporta
+
+```c
+*ts_offset = (uint64_t)swr_get_delay(context, 1000000000);
+```
+
+Un remuestreador tiene un filtro, y un filtro tiene retardo de grupo. libobs lo
+pide en nanosegundos y lo aplica como **desfase de la marca de tiempo** de la
+fuente. Sin eso, remuestrear desincroniza el audio del vídeo en una cantidad
+fija y silenciosa — y como es constante, no se nota como deriva sino como un
+labio que nunca cuadra.
+
+Es lo que se adopta: **el remuestreador declara su latencia** y quien lo usa
+corrige el tiempo. CLAUDE.md §5 ya dice que el audio manda en la sincronía; un
+audio que llega tarde sin decirlo rompe justo eso.
+
+### Dos cosas que no se heredan
+
+1. **No se trae FFmpeg.** El plan 009 ya evitó esa dependencia para la salida, y
+   traerla aquí significaría un árbol de bibliotecas nativas para convertir
+   44 100 en 48 000. El remuestreo de tasa fija es un filtro polifásico
+   bien entendido y cabe en unos cientos de líneas verificables.
+2. **La razón es racional, no un `double`.** 48 000/44 100 es exactamente
+   160/147. Guardarlo como 1,08843537… y acumularlo por bloque es la misma
+   clase de error que el plan 002 evitó con el reloj de vídeo y el plan 011 con
+   el de audio.
+
+## 7. Resumen: qué adoptamos y qué mejoramos
 
 **Qué adoptamos:** float de 32 bits planar como formato interno único; el
 catálogo de disposiciones de altavoces de `speaker_layout`, para que una escena
