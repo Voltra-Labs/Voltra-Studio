@@ -11,7 +11,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use voltra_audio::{ChannelLayout, Gain, MixInput, Mixer, SampleRate, TrackId};
+use voltra_audio::{ChannelLayout, Gain, MixInput, Mixer, Resampler, SampleRate, TrackId};
 use voltra_core::{AudioBuffer, Timestamp};
 
 const RATE: SampleRate = SampleRate::HZ_48000;
@@ -106,5 +106,37 @@ fn ramping(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, steady_state, ramping);
+/// What converting a block between the two rates everyone uses costs.
+fn resampling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("resample 1024 stereo frames");
+
+    for (name, from, to) in [
+        ("44.1 -> 48", SampleRate::HZ_44100, SampleRate::HZ_48000),
+        ("48 -> 44.1", SampleRate::HZ_48000, SampleRate::HZ_44100),
+    ] {
+        let mut resampler = Resampler::new(from, to, ChannelLayout::Stereo, FRAMES).unwrap();
+        let mut input =
+            AudioBuffer::new(from, ChannelLayout::Stereo, FRAMES, Timestamp::ZERO).unwrap();
+        for (index, channel) in input.channels_mut().enumerate() {
+            for (position, sample) in channel.iter_mut().enumerate() {
+                #[allow(clippy::cast_precision_loss)]
+                let value = (position as f32 / 128.0).sin() * 0.5;
+                *sample = if index == 0 { value } else { -value };
+            }
+        }
+        let mut output =
+            AudioBuffer::new(to, ChannelLayout::Stereo, FRAMES * 2, Timestamp::ZERO).unwrap();
+        resampler.process(&input, &mut output).unwrap();
+
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                let produced = resampler.process(black_box(&input), &mut output).unwrap();
+                black_box(produced)
+            });
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, steady_state, ramping, resampling);
 criterion_main!(benches);

@@ -293,8 +293,9 @@ afirmado: `voltra-audio/tests/no_allocation.rs` cuenta con un asignador global y
 exige cero asignaciones en la mezcla, y otro test falla si aparece un `Mutex` en
 la crate. El plan 013 añadió medidores de pico y RMS y balance por pista, con la
 balística deliberadamente fuera del núcleo —es donde libobs también la deja—.
-Queda remuestreo y sincronía A/V para cerrar la fase. Secuencia en
-`docs/ROADMAP.md`.
+El plan 014 añadió remuestreo polifásico de razón fija, así que una fuente a
+44,1 kHz ya entra en un mezclador a 48 kHz. Queda la sincronía A/V para cerrar
+la fase. Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 

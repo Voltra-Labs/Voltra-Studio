@@ -84,6 +84,13 @@ Mezcla, por el mismo bloque de 1024 muestras estéreo:
 | **Mezclar 8 pistas, con medidor y balance** | **25,9 µs** | **0,12 %** | 013 |
 | Mezclar 16 pistas, con medidor y balance | 48,3 µs | 0,23 % | 013 |
 | Mezclar 8 pistas en rampa, con medidor | 29,3 µs | 0,14 % | 013 |
+| **Remuestrear 44,1 → 48 kHz** | **62,7 µs** | **0,29 %** | 014 |
+| Remuestrear 48 → 44,1 kHz | 109 µs | 0,51 % | 014 |
+
+Remuestrear cuesta más que mezclar ocho pistas, y bajar cuesta 1,7× lo que
+subir: el filtro se alarga con el factor de diezmado (32 tomas por fase al subir,
+64 al bajar), que es lo que impide el aliasing. Aun así, una pista remuestreada
+consume el 0,3–0,5 % de su bloque.
 
 Dos observaciones, ninguna accionable todavía:
 
@@ -280,6 +287,30 @@ aquí y en el propio código.
 de las tres medidas. 25,9 µs es el **0,12 % del bloque** de 21,3 ms, y CLAUDE.md
 §4.10 pide las métricas internas siempre encendidas: un medidor que hay que
 activar es un medidor que nadie tiene activado cuando hace falta.
+
+### 3.9 Entre 44,1 y 48 kHz la banda de transición es intrínsecamente estrecha
+
+**No es un defecto del filtro, es aritmética.** Al bajar de 48 a 44,1 kHz, el
+nuevo Nyquist está en 22 050 Hz y la entrada llega hasta 24 000 Hz. Todo lo que
+haya en esos 1 950 Hz se dobla — y se dobla a **entre 20 100 y 22 050 Hz**, que
+está por encima de lo que oye nadie.
+
+Ese margen tan corto exige un filtro largo. Con la ventana de Kaiser en uso
+(β = 8,6, ~80 dB), llevar el rechazo hasta 22 050 Hz conservando 20 000 Hz de
+banda de paso pediría del orden de **17 000 coeficientes**, o 117 tomas por fase:
+casi cuatro veces el coste actual, para atenuar contenido inaudible que se dobla
+a una frecuencia también inaudible.
+
+**Decisión.** La banda de paso se corta al 90 % del límite teórico
+(`CUTOFF_FACTOR`), como hace `libswresample` por omisión, y el resto se acepta.
+El caso donde el aliasing **sí** importa —diezmados grandes, 48 → 8 kHz, donde
+6 kHz se doblaría a 2 kHz y en medio del habla— sí se rechaza, y tiene test.
+
+**Lo que este análisis obligó a arreglar.** El filtro se dimensionaba como
+`TAPS × L`, así que al diezmar mucho (48 → 8 kHz da L = 1) el prototipo quedaba
+en 32 coeficientes: no un filtro, una sugerencia. Ahora las tomas por fase
+escalan con `M/L`, de modo que la longitud total —y con ella la banda de
+transición— se mantiene mire hacia donde mire la conversión.
 
 ### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
 

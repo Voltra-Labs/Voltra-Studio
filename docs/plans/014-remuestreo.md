@@ -1,7 +1,7 @@
 # 014 — Remuestreo
 
 - **Fase:** 3
-- **Estado:** en curso
+- **Estado:** completado (2026-08-31) — ver Resultado
 
 ## Objetivo
 
@@ -171,3 +171,72 @@ por bloque medido y anotado.
   literalmente multiplicar-acumular. `docs/PERFORMANCE.md` §3.7 y §3.8 dicen que
   sin FMA en hardware eso es una llamada a libm por muestra. Este plan **no usa
   `mul_add`**, y es la tercera vez que hace falta escribirlo.
+
+## Resultado
+
+Puerta de calidad en verde: **260 tests** (desde 242), `clippy -D warnings` y
+`fmt` limpios. `voltra-audio` suma 13 tests de remuestreo, 2 de integración con
+el mezclador y 1 de asignación cero.
+
+### El criterio de aceptación
+
+- **SNR de la senoide: por encima de 60 dB**, medido con un DFT de un solo
+  bin a 1 kHz.
+- **Sin aliasing donde importa**: 48 → 8 kHz con un tono de 6 kHz, que se
+  doblaría a 2 kHz en medio del habla, no deja nada medible.
+- **Ganancia continua exacta**: una señal constante de 0,5 sale a 0,5.
+- **Frecuencias iguales: copia bit a bit**, por el atajo de razón 1:1.
+- **Cero asignaciones** en `process`.
+- Y el que cierra el círculo: una pista a 44,1 kHz que el mezclador **rechazaba**
+  entra al remuestrearla, y su medidor lee el nivel correcto.
+
+### Las cifras
+
+| Operación, 1024 muestras estéreo | Coste | % del bloque |
+|---|---|---|
+| Remuestrear 44,1 → 48 kHz | 62,7 µs | 0,29 % |
+| Remuestrear 48 → 44,1 kHz | 109 µs | 0,51 % |
+
+Bajar cuesta 1,7× lo que subir, porque el filtro se alarga con el factor de
+diezmado. Sigue siendo medio por ciento del bloque.
+
+### Un test mío que estaba mal, otra vez
+
+El test de SNR daba **−5,2 dB** y el remuestreador estaba bien. Comparaba muestra
+a muestra contra una senoide generada aparte, alineada a mano restando la
+latencia declarada — así que medía mi aritmética de alineación tanto como el
+filtro, y la aritmética estaba mal.
+
+Reescrito en el dominio de la frecuencia —cuánta potencia queda en el bin de
+1 kHz frente al resto— pasa a la primera. **Un test que depende de la fase es un
+test frágil cuando lo que se mide tiene retardo de grupo.** Es la segunda vez en
+tres planes que el arnés falla antes que el código (plan 012, el contador de
+asignaciones); en los dos casos lo barato habría sido tocar el código hasta que
+el test pasara.
+
+### Un fallo de diseño que el test de aliasing sí encontró
+
+El prototipo se dimensionaba como `TAPS × L`. Con `L` grande —44,1 → 48 da
+L = 160— sale un filtro largo y afilado gratis. Pero al diezmar mucho `L` es
+pequeño: **48 → 8 kHz da L = 1, y el filtro entero eran 32 coeficientes**. No
+filtraba nada.
+
+Ahora las tomas por fase escalan con `M/L`, así que la longitud total se mantiene
+en ambos sentidos. Detalle y el análisis de la banda de transición entre 44,1 y
+48 kHz —que es estrecha por aritmética, no por el filtro— en
+`docs/PERFORMANCE.md` §3.9.
+
+## Desviaciones respecto al plan
+
+- **`TAPS` dejó de ser una constante.** Es lo que arregló el diezmado grande.
+- **Se añadió `CUTOFF_FACTOR`**, no previsto: una pared vertical exactamente en
+  Nyquist necesita un filtro infinito, así que se cede el 10 % superior de la
+  banda para comprar banda de transición. `libswresample` corta por ahí también.
+- **El test de aliasing cambió de caso.** El plan lo planteaba sobre 48 → 44,1,
+  donde resulta que el contenido que se dobla acaba por encima de 20 kHz y es
+  inaudible; se movió a 48 → 8 kHz, donde el doblado cae en el habla. El caso
+  original está analizado con números en §3.9 en vez de convertido en un test
+  que exige lo que no hace falta.
+- **`latency()` y `latency_frames()` difieren en una muestra** por el redondeo a
+  nanosegundos enteros. Está documentado en el tipo y comprobado con tolerancia
+  de uno.

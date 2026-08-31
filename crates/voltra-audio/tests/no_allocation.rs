@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use std::hint::black_box;
 
-use voltra_audio::{Balance, ChannelLayout, Gain, MixInput, Mixer, SampleRate};
+use voltra_audio::{Balance, ChannelLayout, Gain, MixInput, Mixer, Resampler, SampleRate};
 use voltra_core::{AudioBuffer, Timestamp};
 
 thread_local! {
@@ -304,6 +304,36 @@ fn metering_and_balance_allocate_nothing() {
     });
 
     assert_eq!(count, 0, "metering and balance allocated {count} times");
+}
+
+/// The resampler runs on the audio thread too, so it lives under the same rule.
+/// Every allocation it needs — coefficients, per-channel history — happens when
+/// it is built.
+#[test]
+fn resampling_allocates_nothing() {
+    let mut resampler =
+        Resampler::new(SampleRate::HZ_44100, RATE, ChannelLayout::Stereo, FRAMES).unwrap();
+
+    let input = AudioBuffer::new(
+        SampleRate::HZ_44100,
+        ChannelLayout::Stereo,
+        FRAMES,
+        Timestamp::ZERO,
+    )
+    .unwrap();
+    let mut output =
+        AudioBuffer::new(RATE, ChannelLayout::Stereo, FRAMES * 2, Timestamp::ZERO).unwrap();
+
+    // One block first, so any lazy setup is out of the way.
+    resampler.process(&input, &mut output).unwrap();
+
+    let ((), count) = allocations_during(|| {
+        for _ in 0..32 {
+            black_box(resampler.process(&input, &mut output).unwrap());
+        }
+    });
+
+    assert_eq!(count, 0, "resampling allocated {count} times");
 }
 
 /// Nothing in this crate may hold a lock: the audio thread cannot wait on

@@ -70,7 +70,8 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 - Mezclador multipista con ganancia interpolada y control sin bloqueos
   (plan 012, hecho).
 - Medidores de pico y RMS, y balance por pista (plan 013, hecho).
-- Remuestreo y sincronía A/V anclada al reloj de audio.
+- Remuestreo polifásico de razón fija (plan 014, hecho).
+- Sincronía A/V anclada al reloj de audio.
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
   **Cumplido y demostrado** por `voltra-audio/tests/no_allocation.rs`, que
   cuenta asignaciones con un asignador global.
