@@ -86,7 +86,58 @@ en unidades que el hardware cuenta de verdad, una muestra cada vez. El vídeo
 tiene *frames*, que son una convención; el audio tiene *muestras*, que son
 electricidad.
 
-## 4. Resumen: qué adoptamos y qué mejoramos
+## 4. Cómo mezcla libobs
+
+Fuente: [`libobs/obs-audio.c`](https://github.com/obsproject/obs-studio/blob/master/libobs/obs-audio.c),
+función `mix_audio()`.
+
+El núcleo de la mezcla es literalmente esto:
+
+```c
+for (size_t mix_idx = 0; mix_idx < MAX_AUDIO_MIXES; mix_idx++) {
+    for (size_t ch = 0; ch < channels; ch++) {
+        register float *mix = mixes[mix_idx].data[ch];
+        register float *aud = source->audio_output_buf[mix_idx][ch];
+        ...
+        while (aud < end) *(mix++) += *(aud++);
+    }
+}
+```
+
+Tres hechos que se leen directamente ahí:
+
+1. **Sumar es `+=`, y nada más.** No hay ponderación ni normalización por número
+   de fuentes. Diez fuentes al 100 % suenan diez veces más fuerte, y eso es
+   correcto: normalizar por cuenta haría que subir una pista bajase las demás.
+2. **No hay recorte ni limitador en la mezcla.** La suma vive en float y puede
+   pasar de 1,0 tranquilamente. El recorte ocurre **una sola vez**, al convertir
+   a un formato de salida — que es exactamente lo que hace la conversión del
+   plan 011 al saturar.
+3. **Se trabaja por bloques de tamaño fijo** (`AUDIO_OUTPUT_FRAMES`), no muestra
+   a muestra.
+
+El volumen por fuente **no se aplica aquí**: llega ya aplicado, aguas arriba, en
+el render de cada fuente. En la ruta de mezcla que se ve en `mix_audio()` no hay
+interpolación de ganancia de ningún tipo.
+
+### El detalle que no se hereda: la ganancia escalonada
+
+Si la ganancia de una pista cambia de golpe entre un bloque y el siguiente, la
+onda tiene una **discontinuidad**: un salto vertical en la señal. Un salto es,
+por definición, energía en todas las frecuencias — se oye como un clic. A 48 kHz
+con bloques de 1024 muestras, mover un fader produce un clic cada 21 ms mientras
+se mueve.
+
+La solución es estándar en cualquier consola digital: **interpolar la ganancia a
+lo largo del bloque** en vez de aplicarla como escalar. Cuesta un
+multiplicar-acumular por muestra en lugar de un multiplicar, y elimina el
+problema por completo.
+
+Esto es una decisión propia, no algo copiado: **no se verificó** si libobs
+interpola en la ruta aguas arriba donde aplica el volumen. Lo que sí se verificó
+es que en `mix_audio()` no hay interpolación.
+
+## 5. Resumen: qué adoptamos y qué mejoramos
 
 **Qué adoptamos:** float de 32 bits planar como formato interno único; el
 catálogo de disposiciones de altavoces de `speaker_layout`, para que una escena
