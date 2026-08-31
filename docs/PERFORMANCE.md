@@ -54,6 +54,33 @@ conversión, codificación y mux. El reparto objetivo da ~4 ms a la composición
 | Pipeline completo 1080p60, vecino cercano, a fichero | 13,33 ms | 80 % | 009 |
 | Pipeline completo 720p60, bilineal, a fichero | 10,72 ms | 64 % | 009 |
 
+Audio, por bloque de **1024 muestras estéreo** — la unidad que mezcla libobs,
+21,3 ms a 48 kHz. El porcentaje es sobre ese bloque, no sobre el frame de vídeo:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| Decodificar `f32` planar | 73,5 ns | 0,0003 % | 011 |
+| Decodificar `i16` planar | 237 ns | 0,001 % | 011 |
+| Decodificar `f32` intercalado | 368 ns | 0,002 % | 011 |
+| Decodificar `i16` intercalado | 782 ns | 0,004 % | 011 |
+| Codificar `f32` planar | 57,9 ns | 0,0003 % | 011 |
+| Codificar `f32` intercalado | 335 ns | 0,002 % | 011 |
+| **Codificar `i16` planar** | **1,91 µs** | 0,009 % | 011 |
+| **Codificar `i16` intercalado** | **2,19 µs** | 0,010 % | 011 |
+| Asignar búfer 1024 estéreo | 76,7 ns | 0,0004 % | 011 |
+| Silenciar búfer 1024 estéreo | 44,3 ns | 0,0002 % | 011 |
+
+Dos observaciones, ninguna accionable todavía:
+
+1. **Codificar a `i16` cuesta 2,8× lo que decodificarlo.** La sujeción al rango
+   entero es dos comparaciones y un `as` por muestra, y no está en la lectura.
+2. **Intercalar cuesta 3–5× lo que copiar planos**, que es exactamente la
+   transposición que `docs/references/audio.md` §2 anuncia como el precio del
+   formato planar.
+
+Ninguna se optimiza: el peor caso es el **0,01 % del bloque**. Están anotadas
+para que nadie las descubra otra vez creyendo que ha encontrado algo.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

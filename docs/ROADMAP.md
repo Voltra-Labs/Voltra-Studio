@@ -43,8 +43,11 @@ software, así que **no hay ninguna cifra de GPU** (`docs/PERFORMANCE.md` §3.6)
 Cerrar la fase 2 no requiere escribir código: requiere una máquina con GPU y una
 tarde.
 
-Mientras tanto, el siguiente plan por escribir es el de **audio (fase 3)**, que
-no depende de nada de lo anterior.
+Mientras tanto arrancó la **fase 3**: el plan 011 dejó el vocabulario de audio
+—frecuencia, disposición de canales, formatos de borde y el búfer float planar—
+en `voltra-core`. El siguiente paso es el **mezclador**, que es el criterio de
+salida de la fase: sumar pistas con volumen y paneo **sin asignar ni bloquear en
+el callback**.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
@@ -61,6 +64,8 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   benchmark publicado.
 
 ## Fase 3 — Audio
+- Vocabulario: frecuencia, canales, formatos de borde, búfer float planar
+  (plan 011, hecho).
 - Mezclador multipista, medidores, resampling, sincronía A/V anclada al reloj de
   audio.
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
