@@ -1,0 +1,13 @@
+# This crate runs on the audio thread. Nothing in it may wait for another
+# thread (CLAUDE.md §4.3), so the blocking primitives are banned outright and
+# CI's `-D warnings` turns any use into a build failure. Parameters cross
+# threads through atomics instead; see `src/track.rs`.
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "the audio thread must never block" },
+    { path = "std::sync::RwLock", reason = "the audio thread must never block" },
+    { path = "std::sync::Condvar", reason = "the audio thread must never block" },
+    { path = "std::sync::Barrier", reason = "the audio thread must never block" },
+]
+disallowed-methods = [
+    { path = "std::thread::sleep", reason = "the audio thread must never block" },
+]
