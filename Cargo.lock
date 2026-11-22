@@ -1077,6 +1077,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "voltra-encode"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "voltra-core",
+]
+
+[[package]]
 name = "voltra-output"
 version = "0.1.0"
 dependencies = [
