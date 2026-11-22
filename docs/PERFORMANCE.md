@@ -162,6 +162,25 @@ y −20 dB de aliasing por −126 y −124 dB (referencia
 |---|---|
 | El producto escalar espera a la latencia de sus sumas, como la pasada de pico y energía del plan 013; dos acumuladores de 8 carriles intercalados lo arreglan | **No.** 38,3 → 51,6 µs (+29 %) subiendo y +6 % bajando. Revertido. Por qué no se ha investigado: sin el ensamblador delante, cualquier explicación sería una opinión, y con el coste 5,8× por debajo del umbral no hay perfil que pida seguir. Lo que sirvió en el plan 013 no se generaliza solo. |
 
+La entrada de audio (plan 015), por bloque de 1024 muestras estéreo a 48 kHz:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| `push`, fuente a 48 kHz | 0,95 µs | 0,004 % | 015 |
+| `pull` | 0,99 µs | 0,005 % | 015 |
+| `push`, fuente a 44,1 kHz (bloques de 941, remuestreo incluido) | 38,0 µs | 0,18 % | 015 |
+
+El riesgo del plan era que las cargas y almacenamientos atómicos relajados del
+anillo no vectorizaran. No vectorizan, y no importa: copiar 2048 muestras de una
+en una cuesta menos de un microsegundo, veinte veces por debajo del umbral de
+21 µs. El anillo se queda en código seguro; no hay cifra que justifique
+`unsafe`. Con remuestreo, el `push` es el remuestreador (36,7 µs) más lo
+anterior.
+
+Extremo a extremo —fuente a 44,1 kHz con ±5 ms de fluctuación en un hilo,
+mezcla a 48 kHz en otro, 85 ms de latencia—, el margen mínimo antes de cada tick
+fue de **1976 muestras (41 ms)**, y el error frente al tono ideal, **−136 dB**.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

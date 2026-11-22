@@ -284,20 +284,18 @@ de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
 
-**Fase 3 en curso, con su criterio de salida cumplido.** El plan 011 dejó el
-vocabulario de audio en `voltra-core`: `SampleRate` con aritmética exacta,
-`ChannelLayout`, los formatos de borde y `AudioBuffer` —float de 32 bits planar,
-una sola asignación—. El plan 012 dejó el mezclador en `voltra-audio`: volumen,
-balance/paneo y silencio por pista con rampa de un bloque, control desde otro
-hilo por atómicos y aislamiento de fallos por pista. `Mixer::mix` no asigna ni
-bloquea: lo vigilan un test con asignador contador y un `clippy.toml` que
-prohíbe los mutexes en la crate. El plan 013 dejó los medidores: pico, pico
-verdadero por BS.1770 y RMS acumulados en atómicos —ningún pico se pierde, nadie
-espera—, medidores de entrada y salida en cada pista sin pasada extra, y la
-balística de OBS como función pura. El plan 014 dejó el remuestreo: polifase
-de razón exacta, plano hasta 20 kHz, aliasing a −124 dB, sin deriva y sin
-asignar. Queda la sincronía A/V, que conectará el remuestreador al mezclador.
-Secuencia en `docs/ROADMAP.md`.
+**Fase 3 cerrada.** El plan 011 dejó el vocabulario de audio en `voltra-core`
+(`SampleRate` exacta, `ChannelLayout`, formatos de borde, `AudioBuffer` float
+planar). En `voltra-audio`: el mezclador (plan 012) con volumen, balance/paneo y
+silencio en rampa, control por atómicos y aislamiento de fallos por pista; los
+medidores (plan 013), pico, pico verdadero BS.1770 y RMS sin perder picos, con
+la balística de OBS; el remuestreo (plan 014), polifase de razón exacta con
+aliasing a −124 dB; y la entrada de audio por fuente (plan 015), que alisa,
+remuestrea y coloca por marca de tiempo en un anillo SPSC sin `unsafe`. Nada del
+camino del audio asigna ni bloquea: lo vigilan un test con asignador contador,
+también extremo a extremo con dos hilos, y un `clippy.toml` que prohíbe los
+mutexes en la crate. La deriva de relojes pasó a la fase 5 y el reloj A/V a la
+fase 4 (`docs/ROADMAP.md`).
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -315,4 +313,5 @@ Representación de audio: `docs/references/audio.md`.
 Mezclador de audio: `docs/references/audio-mixer.md`.
 Medidores de nivel: `docs/references/audio-meters.md`.
 Remuestreo: `docs/references/audio-resampling.md`.
+Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
 Fases del producto: `docs/ROADMAP.md`.

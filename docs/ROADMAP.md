@@ -51,16 +51,27 @@ volumen, balance/paneo y silencio, controladas desde otro hilo con atómicos, y
 asignaciones y por un lint que prohíbe los mutexes en la crate. 8 pistas en
 rampa cuestan 3,24 µs por bloque de 21,3 ms.
 
-**El criterio de salida de la fase 3 se cumple.** El plan 013 añadió los
-**medidores**: pico, pico verdadero por BS.1770 y RMS, leídos desde otro hilo
-sin perder ningún pico y sin mutex; medidores antes y después del fader en cada
-pista, medidos en la pasada que ya descartaba NaN; y la balística de OBS como
-función pura y estable. El plan 014 añadió el **remuestreo**: polifase de
-razón exacta, plano hasta 20 kHz y con aliasing a −124 dB, frente a −20 dB del
-filtro por defecto de swr que usa OBS, por 37 µs por bloque. Queda la
-**sincronía A/V**, que es también la que conecta el remuestreador al mezclador:
-la cola que reagrupa sus bloques de tamaño variable en los 1024 fijos de la
-mezcla. Si la fase se cierra ya o tras ella está por decidir.
+**La fase 3 está cerrada.** Los planes 013 a 015 completaron el camino del
+audio: **medidores** —pico, pico verdadero por BS.1770 y RMS, sin perder ningún
+pico y sin mutex, con la balística de OBS como función pura—; **remuestreo**
+polifase de razón exacta, plano hasta 20 kHz y con aliasing a −124 dB, frente a
+−20 dB del filtro por defecto de swr que usa OBS; y la **entrada de audio** por
+fuente, que alisa la fluctuación de las marcas de tiempo, remuestrea, coloca por
+marca de tiempo y entrega a cada tick su bloque exacto, sin mutex ni
+asignaciones. Diez segundos de una fuente a 44,1 kHz con ±5 ms de fluctuación,
+entregados desde un hilo y mezclados a 48 kHz en otro, salen con un error de
+−136 dB respecto al tono ideal.
+
+**Decisión al cerrar** (2026-11-22): lo que quedaba bajo "sincronía A/V" se
+reparte donde se puede medir.
+
+- **La corrección de deriva entre relojes de dispositivos** pasa a la fase 5. Sin
+  dispositivos no hay deriva que medir, y corregirla —remuestreo de razón
+  variable guiado por el margen de la cola— sin una medida sería una opinión.
+  Las métricas de margen de la entrada ya la enseñan.
+- **Atar el vídeo al reloj de audio** pasa a la fase 4, cuyo criterio de salida
+  ("sin deriva A/V") es exactamente esa medida, y que trae el pipeline donde
+  hacerla.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
@@ -82,17 +93,21 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 - Mezclador multipista con volumen, balance/paneo y silencio (plan 012, hecho).
 - Medidores: pico, pico verdadero, RMS y balística (plan 013, hecho).
 - Remuestreo polifase de razón exacta (plan 014, hecho).
-- Sincronía A/V anclada al reloj de audio.
+- Entrada de audio por fuente: alisado, remuestreo, colocación por marca de
+  tiempo, latencia explícita (plan 015, hecho).
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
-  **Cumplido** (plan 012).
+  **Cumplido** (plan 012). **Fase cerrada** con el plan 015.
 
 ## Fase 4 — Salida a fichero
 - Codificación de vídeo y audio, muxing, grabación real reproducible.
+- El vídeo anclado al reloj de audio (venido de la fase 3).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni
   crecimiento de memoria.
 
 ## Fase 5 — Captura de plataforma
 - Pantalla, ventana, cámara y audio del sistema en la plataforma prioritaria.
+- Corrección de la deriva entre relojes de dispositivos, con remuestreo de razón
+  variable (venida de la fase 3).
 - **Criterio de salida:** captura a 60 fps con frames perdidos medidos y
   acotados.
 

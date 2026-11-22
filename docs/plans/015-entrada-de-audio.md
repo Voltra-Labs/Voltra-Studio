@@ -1,8 +1,9 @@
 # 015 — Entrada de audio: de la fuente al tick de la mezcla
 
 - **Fase:** 3
-- **Estado:** en curso (2026-11-22) — ejecutado sin esperar revisión del plan,
-  por indicación expresa del responsable ("no me preguntes, dale")
+- **Estado:** completado (2026-11-22) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale").
 
 ## Objetivo
 
@@ -214,3 +215,61 @@ Tres commits:
 - **Una fuente cuyo reloj va más rápido llena el anillo** hasta desbordar. Sin
   corrección de deriva es inevitable; las métricas lo enseñan antes de que
   pase, y la fase 5 lo corrige.
+
+## Resultado
+
+Puerta de calidad en verde: **295 tests** (desde 279), `clippy -D warnings`
+limpio, `fmt` limpio. Tres commits: `Resampler::process_at` y el anillo; la
+entrada con sus reglas; y la prueba extremo a extremo con el benchmark.
+
+### Extremo a extremo
+
+Diez segundos de un tono de 1 kHz a 44,1 kHz, en bloques de 441 a 1323
+muestras con ±5 ms de fluctuación en las marcas, empujados desde un hilo y
+mezclados a 48 kHz en otro con 85 ms de latencia:
+
+- **Todos los ticks `Full`** tras los dos primeros (la latencia del
+  remuestreador y el fundido de entrada de la pista).
+- Ni huecos, ni solapes, ni discontinuidades; la fluctuación absorbida llegó a
+  más de 4 ms.
+- **Error de −136 dB** frente al tono ideal a 48 kHz, sin ajustar fase: el
+  camino entero no añade nada al error del remuestreador.
+- **Cero asignaciones en los dos hilos.**
+- Margen mínimo antes de cada tick: 1976 muestras, 41 ms de los 85.
+
+### Coste
+
+`push` 0,95 µs, `pull` 0,99 µs por bloque estéreo de 1024; con remuestreo desde
+44,1 kHz, `push` 38 µs, casi todo el remuestreo. Las atómicas no vectorizan,
+como temía el plan, y da igual: veinte veces por debajo del umbral.
+
+### Lo que los tests corrigieron
+
+- **El arranque necesitaba una regla que el plan no tenía.** Las posiciones son
+  índices absolutos del reloj monótono, así que el primer bloque cae en un
+  índice enorme mientras la lectura está en cero: nunca cabría nada. Y rellenar
+  de silencio desde cero habría servido ticks `Full` de silencio antes de que
+  la fuente existiera. La regla: **todo índice entre la lectura y la escritura
+  está escrito de verdad**; cuando no queda nada sin leer, el productor adelanta
+  la lectura hasta su bloque en vez de rellenar. Para eso la posición de
+  lectura avanza con `fetch_max` desde los dos lados, y el consumidor carga la
+  escritura antes que la lectura (documentado en el anillo).
+- **El alisado a cero convertía el redondeo en discontinuidades**:
+  `pts(a) + pts(b)` difiere de `pts(a + b)` en un nanosegundo. El umbral nunca
+  baja de media muestra de la fuente, como la tolerancia del remuestreador.
+- **El primer bloque ancla la línea de tiempo.** Con fluctuación también en él,
+  la salida entera quedaba desplazada hasta 5 ms y el error subía a −11,7 dB.
+  Es el comportamiento correcto —el primer bloque dice dónde está la fuente, y
+  OBS hace lo mismo—; el test fija la marca del primero y lo explica.
+
+## Desviaciones respecto al plan
+
+- **`push` devuelve `Result<()>`**, no un informe por bloque: todo lo que pasa
+  se cuenta en `InputStats`, que leen los dos lados.
+- **Un bloque más largo que el tick de salida** se detecta en `pull` con
+  `OutputTooSmall` (el bloque debe medir exactamente un tick), y uno de otra
+  disposición con `FormatMismatch`.
+- **La capacidad mínima del anillo** es el doble del bloque más largo más un
+  tick, aunque se pida menos, para que un bloque siempre quepa.
+- **Fase 3 cerrada**, con la deriva de relojes movida a la fase 5 y el reloj A/V
+  a la fase 4: decisión registrada en `ROADMAP.md`.

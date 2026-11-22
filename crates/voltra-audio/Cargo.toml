@@ -30,5 +30,9 @@ harness = false
 name = "resample"
 harness = false
 
+[[bench]]
+name = "input"
+harness = false
+
 [lints]
 workspace = true
