@@ -7,6 +7,7 @@ use voltra_core::{AudioBuffer, ChannelLayout};
 use super::cell::LevelCells;
 use super::levels::Levels;
 use super::stats::peak_and_energy;
+use super::true_peak::TruePeak;
 
 /// Whether a meter looks between samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,6 +30,8 @@ pub struct Meter {
     layout: ChannelLayout,
     mode: PeakMode,
     cells: Arc<LevelCells>,
+    /// Filter state across blocks; untouched in [`PeakMode::Sample`].
+    true_peak: TruePeak,
 }
 
 /// The reading half of a meter. One per meter: `Send`, not `Clone`, because
@@ -49,6 +52,7 @@ impl Meter {
                 layout,
                 mode,
                 cells: Arc::clone(&cells),
+                true_peak: TruePeak::new(),
             },
             MeterReader {
                 count: layout.channels(),
@@ -77,7 +81,12 @@ impl Meter {
             let (peak, energy) = peak_and_energy(samples);
             let true_peak = match self.mode {
                 PeakMode::Sample => 0.0,
-                PeakMode::True => peak,
+                // Never below the sample peak: no phase of the standard's
+                // filter reproduces the sample itself.
+                PeakMode::True => {
+                    let between = self.true_peak.measure(channel, samples);
+                    if between > peak { between } else { peak }
+                }
             };
             self.cells.add(channel, peak, true_peak, energy, frames);
         }

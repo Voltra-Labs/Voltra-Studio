@@ -11,6 +11,7 @@ mod cell;
 mod levels;
 mod standalone;
 mod stats;
+mod true_peak;
 
 pub use levels::{ChannelLevels, Levels};
 pub use standalone::{Meter, MeterReader, PeakMode};

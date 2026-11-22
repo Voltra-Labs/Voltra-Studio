@@ -199,8 +199,10 @@ fn metering_never_allocates() {
         let (mut meter, mut reader) = Meter::new(ChannelLayout::Stereo, mode);
         let stereo = block(ChannelLayout::Stereo, 0.25);
         let mono = block(ChannelLayout::Mono, 0.5);
+        // Fewer blocks than the mixer test: true peak is slow in debug builds,
+        // and one allocation per block would show in the first.
         let calls = allocations_during(|| {
-            for _ in 0..10_000 {
+            for _ in 0..1_000 {
                 meter.process(&stereo);
                 meter.process(&mono);
                 std::hint::black_box(reader.take());
