@@ -4,33 +4,6 @@
 //! drop bounds checks and vectorise (CLAUDE.md §4.4). No `mul_add`: without a
 //! target FMA feature it lowers to a libm call per sample.
 
-/// Whether every sample is finite.
-///
-/// `x - x` is `0.0` for any finite `x` and NaN for NaN and both infinities, and
-/// NaN survives addition. Summing it in eight independent lanes, without an
-/// early exit, keeps the loop branch-free so it vectorises: one pass, no
-/// per-sample decision.
-#[allow(
-    clippy::eq_op,
-    reason = "`x - x` is the test itself: zero when finite, NaN otherwise"
-)]
-pub(crate) fn all_finite(samples: &[f32]) -> bool {
-    const LANES: usize = 8;
-    let mut lanes = [0.0f32; LANES];
-    let chunks = samples.chunks_exact(LANES);
-    let rest = chunks.remainder();
-    for chunk in chunks {
-        for (lane, &sample) in lanes.iter_mut().zip(chunk) {
-            *lane += sample - sample;
-        }
-    }
-    let mut total: f32 = lanes.iter().sum();
-    for &sample in rest {
-        total += sample - sample;
-    }
-    total == 0.0
-}
-
 /// `out += input × gain`.
 pub(crate) fn accumulate(out: &mut [f32], input: &[f32], gain: f32) {
     for (sum, &sample) in out.iter_mut().zip(input) {
@@ -54,23 +27,7 @@ pub(crate) fn accumulate_ramp(out: &mut [f32], input: &[f32], from: f32, to: f32
 // Exact values are the point of these tests.
 #[allow(clippy::float_cmp)]
 mod tests {
-    use super::{accumulate, accumulate_ramp, all_finite};
-
-    #[test]
-    fn finite_check_catches_nan_and_both_infinities_anywhere() {
-        let clean: Vec<f32> = (0..37u16).map(|i| f32::from(i) - 18.0).collect();
-        assert!(all_finite(&clean));
-        assert!(all_finite(&[]));
-        assert!(all_finite(&[f32::MAX, f32::MIN, -0.0]));
-        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            // In a full lane, and in the remainder.
-            for position in [0, 5, 31, 36] {
-                let mut samples = clean.clone();
-                samples[position] = bad;
-                assert!(!all_finite(&samples), "{bad} at {position}");
-            }
-        }
-    }
+    use super::{accumulate, accumulate_ramp};
 
     #[test]
     fn accumulate_adds_scaled() {

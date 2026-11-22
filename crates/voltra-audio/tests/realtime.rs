@@ -104,6 +104,8 @@ fn mixing_never_allocates() {
     let voice = mixer.add_track(ChannelLayout::Mono).unwrap();
     let flaky = mixer.add_track(ChannelLayout::Stereo).unwrap();
     let absent = mixer.add_track(ChannelLayout::Stereo).unwrap();
+    let mut music_meter = mixer.take_track_meter(music.id()).unwrap();
+    let mut voice_meter = mixer.take_track_meter(voice.id()).unwrap();
 
     let stereo = block(ChannelLayout::Stereo, 0.25);
     let mono = block(ChannelLayout::Mono, 0.5);
@@ -141,6 +143,7 @@ fn mixing_never_allocates() {
                 )
                 .unwrap();
             std::hint::black_box(report);
+            std::hint::black_box((music_meter.take(), voice_meter.take()));
         }
     });
 
@@ -156,6 +159,23 @@ fn controls_from_another_thread_never_stall_the_mix() {
     let a = mixer.add_track(ChannelLayout::Stereo).unwrap();
     let b = mixer.add_track(ChannelLayout::Mono).unwrap();
     let stop = Arc::new(AtomicBool::new(false));
+
+    // A third thread reads both tracks' meters as fast as it can.
+    let mut meters = (
+        mixer.take_track_meter(a.id()).unwrap(),
+        mixer.take_track_meter(b.id()).unwrap(),
+    );
+    let reader = {
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let mut frames = 0u64;
+            while !stop.load(Ordering::Relaxed) {
+                frames += meters.0.take().input.frames();
+                std::hint::black_box(meters.1.take());
+            }
+            frames + meters.0.take().input.frames()
+        })
+    };
 
     let hammer = {
         let (a, b, stop): (TrackControl, TrackControl, _) =
@@ -191,6 +211,8 @@ fn controls_from_another_thread_never_stall_the_mix() {
     }
     stop.store(true, Ordering::Relaxed);
     hammer.join().unwrap();
+    // Every mixed block's duration reached the reader exactly once.
+    assert_eq!(reader.join().unwrap(), 10_000 * FRAMES as u64);
 }
 
 #[test]

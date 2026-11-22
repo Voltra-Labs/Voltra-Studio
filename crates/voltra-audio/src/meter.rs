@@ -11,7 +11,11 @@ mod cell;
 mod levels;
 mod standalone;
 mod stats;
+mod track_meter;
 mod true_peak;
 
 pub use levels::{ChannelLevels, Levels};
 pub use standalone::{Meter, MeterReader, PeakMode};
+pub(crate) use stats::peak_and_energy;
+pub(crate) use track_meter::TrackCells;
+pub use track_meter::{TrackLevels, TrackMeter};

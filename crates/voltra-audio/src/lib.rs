@@ -15,6 +15,11 @@
 //!   one block, so muting does not click and dragging a fader does not zipper.
 //! - **The sum is not clipped.** Float carries a sum above unity; it is limited
 //!   once, when the edge conversion writes integers.
+//! - **Metering loses no peak and waits for nobody.** Every track has meters
+//!   before and after its fader ([`TrackMeter`]), measured in the pass that
+//!   already screens each block for NaN; any signal can have a [`Meter`], with
+//!   true peak by ITU-R BS.1770. The audio thread accumulates into atomics and
+//!   the reader takes whenever it likes.
 //!
 //! The vocabulary — [`AudioBuffer`](voltra_core::AudioBuffer), rates, layouts —
 //! lives in `voltra-core`. The design against libobs is in
@@ -63,6 +68,6 @@ mod track;
 
 pub use error::{Error, Result};
 pub use gain::{Balance, Gain};
-pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode};
+pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode, TrackLevels, TrackMeter};
 pub use mixer::{MixReport, MixSpec, MixTotals, Mixer};
 pub use track::{TrackControl, TrackId};

@@ -10,7 +10,8 @@ use std::sync::Arc;
 use voltra_core::{AudioBuffer, ChannelLayout, MAX_CHANNELS, SampleRate, Timestamp};
 
 use crate::gain::{ChannelGains, Routing};
-use crate::kernel::{accumulate, accumulate_ramp, all_finite};
+use crate::kernel::{accumulate, accumulate_ramp};
+use crate::meter::{TrackCells, TrackMeter, peak_and_energy};
 use crate::track::{TrackControl, TrackId, TrackParams};
 use crate::{Error, Result};
 
@@ -110,6 +111,10 @@ struct Track {
     layout: ChannelLayout,
     routing: Routing,
     params: Arc<TrackParams>,
+    /// Meters before and after the fader. Written whether or not anyone reads.
+    meters: Arc<TrackCells>,
+    /// Whether [`Mixer::take_track_meter`] has handed out the reader.
+    meter_taken: bool,
     /// Per-channel gains reached at the end of the last block. Zero for a new
     /// track or one that did not sound, so it always enters with a fade.
     applied: ChannelGains,
@@ -152,6 +157,8 @@ pub struct Mixer {
     next_id: u32,
     block: u64,
     totals: MixTotals,
+    /// `spec.frames` as the meters count it.
+    meter_frames: u32,
 }
 
 impl Mixer {
@@ -180,6 +187,7 @@ impl Mixer {
             next_id: 0,
             block: 0,
             totals: MixTotals::default(),
+            meter_frames: u32::try_from(spec.frames).unwrap_or(u32::MAX),
         })
     }
 
@@ -222,10 +230,36 @@ impl Mixer {
             layout,
             routing,
             params,
+            meters: Arc::new(TrackCells::new()),
+            meter_taken: false,
             applied: [0.0; MAX_CHANNELS],
             seen: 0,
         });
         Ok(control)
+    }
+
+    /// The meters of a track, handed out once.
+    ///
+    /// `None` when the track does not exist or its meter was already taken:
+    /// two readers would each take half of what was measured. Measuring starts
+    /// with the track, not with this call, so a reader taken late still sees
+    /// every peak since the previous take — or since the track began.
+    pub fn take_track_meter(&mut self, id: TrackId) -> Option<TrackMeter> {
+        let mix = self.spec.layout;
+        let index = self
+            .tracks
+            .binary_search_by_key(&id, |track| track.id)
+            .ok()?;
+        let track = self.tracks.get_mut(index)?;
+        if track.meter_taken {
+            return None;
+        }
+        track.meter_taken = true;
+        Some(TrackMeter::new(
+            Arc::clone(&track.meters),
+            track.layout,
+            mix,
+        ))
     }
 
     /// Remove a track. Returns whether it existed.
@@ -250,6 +284,10 @@ impl Mixer {
     /// An input that does not is dropped and counted, and the rest still mix.
     ///
     /// `out` is overwritten, not added to. It is not clipped.
+    ///
+    /// A block is non-finite when a channel's sum of squares is: any NaN or
+    /// infinity, and also samples so large (beyond about 10¹⁹) that their
+    /// squares overflow `f32`, which no real signal comes near.
     ///
     /// Never allocates, never blocks, never logs.
     ///
@@ -288,16 +326,26 @@ impl Mixer {
 
             if !fits(input, track.layout, self.spec, out.pts()) {
                 report.rejected += 1;
-                track.fail();
-                continue;
-            }
-            if !all_finite(input.as_slice()) {
-                report.non_finite += 1;
-                track.fail();
+                track.fail(out.channel_count(), self.meter_frames);
                 continue;
             }
 
+            // One pass per channel, for the meters and the NaN screen alike: a
+            // NaN or an infinity anywhere makes that channel's energy
+            // non-finite.
+            let mut stats = [(0.0f32, 0.0f32); MAX_CHANNELS];
+            for (slot, samples) in stats.iter_mut().zip(input.channels()) {
+                *slot = peak_and_energy(samples);
+            }
+            if stats.iter().any(|&(_, energy)| !energy.is_finite()) {
+                report.non_finite += 1;
+                track.fail(out.channel_count(), self.meter_frames);
+                continue;
+            }
+
+            let before = track.applied;
             track.sum_into(input, out, &self.ramp);
+            track.meter(&stats, &before, out.channel_count(), self.meter_frames);
             report.mixed += 1;
         }
 
@@ -305,6 +353,11 @@ impl Mixer {
             if track.seen != self.block {
                 report.missing += 1;
                 track.applied = [0.0; MAX_CHANNELS];
+                track.meters.silent(
+                    track.layout.channels(),
+                    out.channel_count(),
+                    self.meter_frames,
+                );
             }
         }
 
@@ -322,10 +375,45 @@ fn fits(input: &AudioBuffer, layout: ChannelLayout, spec: MixSpec, pts: Timestam
 }
 
 impl Track {
-    /// Drop this block: count it against the track and fade in next time.
-    fn fail(&mut self) {
+    /// Drop this block: count it against the track, let its meters fall, and
+    /// fade in next time.
+    fn fail(&mut self, mix_channels: usize, frames: u32) {
         self.params.fault();
         self.applied = [0.0; MAX_CHANNELS];
+        self.meters
+            .silent(self.layout.channels(), mix_channels, frames);
+    }
+
+    /// Record a mixed block on both meters.
+    ///
+    /// The output is derived, not measured — tracks sum into one buffer — as
+    /// the input scaled by each mix channel's gain. During a ramp the larger of
+    /// the two gains is used, so the meter never under-reads.
+    fn meter(
+        &self,
+        stats: &[(f32, f32); MAX_CHANNELS],
+        before: &[f32; MAX_CHANNELS],
+        mix_channels: usize,
+        frames: u32,
+    ) {
+        for (channel, &(peak, energy)) in stats.iter().enumerate().take(self.layout.channels()) {
+            self.meters.input(channel, peak, energy, frames);
+        }
+        for (channel, (&from, &to)) in before
+            .iter()
+            .zip(&self.applied)
+            .enumerate()
+            .take(mix_channels)
+        {
+            let gain = if from > to { from } else { to };
+            let (peak, energy) = stats
+                .get(self.routing.source_channel(channel))
+                .copied()
+                .unwrap_or_default();
+            self.meters
+                .output(channel, peak * gain, energy * gain * gain, frames);
+        }
+        self.meters.close(frames);
     }
 
     /// Add this track's block into `out` at its current gains.

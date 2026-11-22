@@ -49,10 +49,11 @@ impl LevelCell {
         }
     }
 
-    fn add(&self, peak: f32, true_peak: f32, energy: f32, frames: u32) {
-        self.peak.fetch_max(peak.to_bits(), Ordering::Relaxed);
-        self.true_peak
-            .fetch_max(true_peak.to_bits(), Ordering::Relaxed);
+    fn add(&self, peak: f32, true_peak: Option<f32>, energy: f32, frames: u32) {
+        raise(&self.peak, peak);
+        if let Some(true_peak) = true_peak {
+            raise(&self.true_peak, true_peak);
+        }
         // The closure always returns `Some`, so this cannot fail.
         let _ = self
             .power
@@ -70,6 +71,18 @@ impl LevelCell {
             energy,
             frames,
         }
+    }
+}
+
+/// Raise a stored peak to `value` if it is higher.
+///
+/// A plain load first: most blocks do not beat the peak already stored since
+/// the last read, and a load costs a fraction of a read-modify-write. The
+/// `fetch_max` after it keeps the result exact if the reader resets in between.
+fn raise(cell: &AtomicU32, value: f32) {
+    let bits = value.to_bits();
+    if bits > cell.load(Ordering::Relaxed) {
+        cell.fetch_max(bits, Ordering::Relaxed);
     }
 }
 
@@ -105,7 +118,16 @@ impl LevelCells {
     /// Add one block's measurements for `channel`. Out-of-range is ignored.
     ///
     /// `peak` and `true_peak` must be non-negative and not NaN.
-    pub(crate) fn add(&self, channel: usize, peak: f32, true_peak: f32, energy: f32, frames: u32) {
+    /// `true_peak` is `None` for a meter that does not measure it, which then
+    /// costs no atomic at all.
+    pub(crate) fn add(
+        &self,
+        channel: usize,
+        peak: f32,
+        true_peak: Option<f32>,
+        energy: f32,
+        frames: u32,
+    ) {
         if let Some(cell) = self.cells.get(channel) {
             cell.add(peak, true_peak, energy, frames);
         }
@@ -138,9 +160,9 @@ mod tests {
     #[test]
     fn peaks_accumulate_as_maxima_and_reset_on_take() {
         let cells = LevelCells::new();
-        cells.add(0, 0.25, 0.3, 1.0, 10);
-        cells.add(0, 0.75, 0.7, 2.0, 10);
-        cells.add(0, 0.5, 0.9, 0.5, 4);
+        cells.add(0, 0.25, Some(0.3), 1.0, 10);
+        cells.add(0, 0.75, Some(0.7), 2.0, 10);
+        cells.add(0, 0.5, Some(0.9), 0.5, 4);
         let taken = cells.take(0);
         assert_eq!((taken.peak, taken.true_peak), (0.75, 0.9));
         assert_eq!((taken.energy, taken.frames), (3.5, 24));
@@ -150,8 +172,8 @@ mod tests {
     #[test]
     fn frame_count_saturates() {
         let cells = LevelCells::new();
-        cells.add(1, 0.0, 0.0, 0.0, u32::MAX);
-        cells.add(1, 0.0, 0.0, 0.0, 5);
+        cells.add(1, 0.0, None, 0.0, u32::MAX);
+        cells.add(1, 0.0, None, 0.0, 5);
         assert_eq!(cells.take(1).frames, u32::MAX);
     }
 
@@ -167,7 +189,7 @@ mod tests {
     #[test]
     fn out_of_range_channels_are_ignored() {
         let cells = LevelCells::new();
-        cells.add(99, 1.0, 1.0, 1.0, 1);
+        cells.add(99, 1.0, Some(1.0), 1.0, 1);
         assert_eq!(cells.take(99).frames, 0);
     }
 }

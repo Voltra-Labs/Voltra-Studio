@@ -80,12 +80,12 @@ impl Meter {
         for (channel, samples) in block.channels().enumerate() {
             let (peak, energy) = peak_and_energy(samples);
             let true_peak = match self.mode {
-                PeakMode::Sample => 0.0,
+                PeakMode::Sample => None,
                 // Never below the sample peak: no phase of the standard's
                 // filter reproduces the sample itself.
                 PeakMode::True => {
                     let between = self.true_peak.measure(channel, samples);
-                    if between > peak { between } else { peak }
+                    Some(if between > peak { between } else { peak })
                 }
             };
             self.cells.add(channel, peak, true_peak, energy, frames);

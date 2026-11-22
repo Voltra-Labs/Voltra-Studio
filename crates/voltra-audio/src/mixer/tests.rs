@@ -394,3 +394,5 @@ fn the_mixer_can_move_to_the_audio_thread() {
     send::<Mixer>();
     send_sync::<TrackControl>();
 }
+
+mod meters;
