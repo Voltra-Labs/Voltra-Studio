@@ -22,5 +22,9 @@ criterion = { version = "0.7", default-features = false, features = [
 name = "mix"
 harness = false
 
+[[bench]]
+name = "meter"
+harness = false
+
 [lints]
 workspace = true

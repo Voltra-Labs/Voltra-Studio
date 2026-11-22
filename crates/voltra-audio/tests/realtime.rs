@@ -2,8 +2,9 @@
 //!
 //! The allocation check wraps the system allocator and counts every call made
 //! **on the current thread** while a thread-local flag is armed. Tests in this
-//! binary run on several threads at once; the flag keeps them from counting
-//! each other. It also means only the arming thread is watched — enough while
+//! binary run on several threads at once, so both the flag and the count are
+//! thread-local: with a shared count, two armed tests would read each other's
+//! allocations into their own totals. It also means only the arming thread is watched — enough while
 //! `Mixer::mix` spawns no work elsewhere. If it ever does (say, `rayon` over
 //! channels), this test has to grow with it.
 
@@ -12,15 +13,15 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use voltra_audio::{Balance, Gain, MixSpec, Mixer, TrackControl};
+use voltra_audio::{Balance, Gain, Meter, MixSpec, Mixer, PeakMode, TrackControl};
 use voltra_core::{AudioBuffer, ChannelLayout, SampleRate, Timestamp};
 
 thread_local! {
     static ARMED: Cell<bool> = const { Cell::new(false) };
+    static CALLS: Cell<usize> = const { Cell::new(0) };
 }
-static CALLS: AtomicUsize = AtomicUsize::new(0);
 
 struct Counting;
 
@@ -29,14 +30,15 @@ impl Counting {
         // `try_with` because the allocator also runs while thread-locals are
         // being torn down, when `with` would panic.
         if ARMED.try_with(Cell::get).unwrap_or(false) {
-            CALLS.fetch_add(1, Ordering::Relaxed);
+            let _ = CALLS.try_with(|calls| calls.set(calls.get() + 1));
         }
     }
 }
 
 // SAFETY: every method forwards to `System` with the caller's arguments
 // unchanged, so `System`'s guarantees are this allocator's guarantees. The
-// only addition is an atomic increment, which neither allocates nor unwinds.
+// only addition is a thread-local counter increment, which neither allocates
+// nor unwinds.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         Self::note();
@@ -68,11 +70,11 @@ static ALLOCATOR: Counting = Counting;
 
 /// Allocator calls made on this thread while running `work`.
 fn allocations_during(work: impl FnOnce()) -> usize {
-    let before = CALLS.load(Ordering::Relaxed);
+    let before = CALLS.with(Cell::get);
     ARMED.with(|armed| armed.set(true));
     work();
     ARMED.with(|armed| armed.set(false));
-    CALLS.load(Ordering::Relaxed) - before
+    CALLS.with(Cell::get) - before
 }
 
 const FRAMES: usize = 1024;
@@ -189,4 +191,21 @@ fn controls_from_another_thread_never_stall_the_mix() {
     }
     stop.store(true, Ordering::Relaxed);
     hammer.join().unwrap();
+}
+
+#[test]
+fn metering_never_allocates() {
+    for mode in [PeakMode::Sample, PeakMode::True] {
+        let (mut meter, mut reader) = Meter::new(ChannelLayout::Stereo, mode);
+        let stereo = block(ChannelLayout::Stereo, 0.25);
+        let mono = block(ChannelLayout::Mono, 0.5);
+        let calls = allocations_during(|| {
+            for _ in 0..10_000 {
+                meter.process(&stereo);
+                meter.process(&mono);
+                std::hint::black_box(reader.take());
+            }
+        });
+        assert_eq!(calls, 0, "metering allocated in {mode:?}");
+    }
 }

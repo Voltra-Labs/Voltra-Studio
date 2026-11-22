@@ -57,10 +57,12 @@ compile_error!("voltra-audio needs lock-free 32- and 64-bit atomics");
 mod error;
 mod gain;
 mod kernel;
+mod meter;
 mod mixer;
 mod track;
 
 pub use error::{Error, Result};
 pub use gain::{Balance, Gain};
+pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode};
 pub use mixer::{MixReport, MixSpec, MixTotals, Mixer};
 pub use track::{TrackControl, TrackId};
