@@ -143,6 +143,25 @@ supuso al dejarlo opcional y solo en la salida. Al 0,04 % del bloque, sigue
 siendo despreciable para un medidor; no lo sería en cada una de 64 pistas
 (0,6 ms), y por eso no está ahí.
 
+El remuestreo (plan 014), por bloque de **entrada** de 1024 muestras estéreo:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| **44,1 → 48 kHz** (160/147 fases, 136 coeficientes) | **36,7 µs** | **0,17 %** | 014 |
+| 48 → 44,1 kHz (147/160 fases, 152 coeficientes) | 38,1 µs | 0,18 % | 014 |
+
+Son ~303 000 multiplicaciones-suma por bloque estéreo a 44,1 → 48: unas 8 G por
+segundo, 2,6 por ciclo. El umbral era el 1 % del bloque (213 µs): queda 5,8×
+por debajo. Es la parte más cara del audio hasta ahora, y es el precio
+consciente de un filtro 4× más largo que el de swr, que cambia −25 dB de imagen
+y −20 dB de aliasing por −126 y −124 dB (referencia
+`docs/references/audio-resampling.md` §3). Ocho fuentes a 44,1 kHz serían el
+1,4 % del bloque.
+
+| Hipótesis | Resultado |
+|---|---|
+| El producto escalar espera a la latencia de sus sumas, como la pasada de pico y energía del plan 013; dos acumuladores de 8 carriles intercalados lo arreglan | **No.** 38,3 → 51,6 µs (+29 %) subiendo y +6 % bajando. Revertido. Por qué no se ha investigado: sin el ensamblador delante, cualquier explicación sería una opinión, y con el coste 5,8× por debajo del umbral no hay perfil que pida seguir. Lo que sirvió en el plan 013 no se generaliza solo. |
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

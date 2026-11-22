@@ -1,8 +1,9 @@
 # 014 — Remuestreo
 
 - **Fase:** 3
-- **Estado:** en curso (2026-11-22) — aprobado sin revisión previa por
-  indicación expresa del responsable ("no me preguntes, dale")
+- **Estado:** completado (2026-11-22) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale").
 
 ## Objetivo
 
@@ -208,3 +209,55 @@ cuadrados—, en `f32`:
 - **La tolerancia de continuidad es demasiado estricta para fuentes reales.** Es
   deliberado: este remuestreador asume un flujo continuo y la sincronía le
   entregará uno. Si se quiere usar antes con un dispositivo, `reset` existe.
+
+## Resultado
+
+Puerta de calidad en verde: **279 tests** (desde 260), `clippy -D warnings`
+limpio, `fmt` limpio. Dos commits: el banco de filtros con
+`AudioBuffer::capacity_frames`, y el `Resampler`.
+
+### Calidad, en `f32`
+
+Medida con el mismo ajuste por mínimos cuadrados que la referencia:
+
+| Caso | Ganancia | Error |
+|---|---|---|
+| 44,1 → 48 kHz, 1 / 10 / 18 kHz | 0,0000 dB | −136 / −136 / −137 dB |
+| 44,1 → 48 kHz, **20 kHz** | **−0,017 dB** | **−126 dB** |
+| 48 → 44,1 kHz, 1 / 10 / 18 kHz | 0,0000 dB | −139 / −136 / −138 dB |
+| 48 → 44,1 kHz, 20 kHz | −0,012 dB | −131 dB |
+| 48 → 44,1 kHz, **23 kHz** (aliasing) | — | **−124 dB** |
+| Alineación, sin ajustar la fase | — | −136 dB |
+
+Igual que el prototipo en `f64`: el redondeo de `f32` no se nota por encima de
+−126 dB. Frente al filtro por defecto de swr, emulado, el tono de 20 kHz pasa de
+dejar una imagen a −25 dB a −126 dB, y el aliasing a 23 kHz de −20 a −124 dB.
+
+### Coste
+
+**36,7 µs** por bloque estéreo de 1024 a 44,1 → 48 kHz, el 0,17 % del bloque,
+5,8× por debajo del umbral y dentro de la estimación de 30–60 µs. 38,1 µs en el
+sentido contrario. Un experimento con dos acumuladores intercalados salió un
+29 % peor y se revirtió; está en `PERFORMANCE.md`.
+
+### Lo demás, comprobado
+
+Partir el flujo en bloques de 1, 7, 100, 333, 1500 o 2048 da las mismas
+muestras bit a bit; diez segundos producen exactamente lo que permite la razón
+menos la latencia; las marcas de tiempo de bloques consecutivos encajan sin un
+nanosegundo de error; un salto reinicia y cuenta; los bloques erróneos se
+rechazan sin consumir nada; y `process` no asigna en 200 bloques por sentido,
+incluidas las salidas que alternan entre 1114 y 1115 muestras.
+
+## Desviaciones respecto al plan
+
+- **Latencia de 1,54 ms** (68 muestras a 44,1 kHz), no "unos 1,4": 136
+  coeficientes con el centro en 67.
+- **`FormatMismatch` sirve para la entrada y la salida**, con la frecuencia y la
+  disposición esperadas y encontradas, en vez de un error por lado.
+- **El test de cero asignaciones da 200 bloques por sentido**, no "miles": el
+  filtro es lento en debug y una asignación por bloque aparecería en el primero.
+- **El reinicio por discontinuidad descarta la cola** que el filtro aún no había
+  emitido —la latencia, 1,5 ms—. El plan no lo decía. Es un salto en el flujo de
+  todas formas, y emitir esa cola habría exigido una marca de tiempo para algo
+  que ya no es continuo con nada.

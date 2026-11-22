@@ -294,7 +294,9 @@ bloquea: lo vigilan un test con asignador contador y un `clippy.toml` que
 prohíbe los mutexes en la crate. El plan 013 dejó los medidores: pico, pico
 verdadero por BS.1770 y RMS acumulados en atómicos —ningún pico se pierde, nadie
 espera—, medidores de entrada y salida en cada pista sin pasada extra, y la
-balística de OBS como función pura. Quedan remuestreo y sincronía A/V.
+balística de OBS como función pura. El plan 014 dejó el remuestreo: polifase
+de razón exacta, plano hasta 20 kHz, aliasing a −124 dB, sin deriva y sin
+asignar. Queda la sincronía A/V, que conectará el remuestreador al mezclador.
 Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
@@ -312,4 +314,5 @@ Composición acelerada: `docs/references/gpu-compositing.md`.
 Representación de audio: `docs/references/audio.md`.
 Mezclador de audio: `docs/references/audio-mixer.md`.
 Medidores de nivel: `docs/references/audio-meters.md`.
+Remuestreo: `docs/references/audio-resampling.md`.
 Fases del producto: `docs/ROADMAP.md`.

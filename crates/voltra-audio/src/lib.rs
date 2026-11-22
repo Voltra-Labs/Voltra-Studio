@@ -1,4 +1,4 @@
-//! Audio processing: the real-time mixer.
+//! Audio processing: the real-time mixer, its meters, and resampling.
 //!
 //! [`Mixer`] sums tracks into one output block with per-track gain, balance
 //! and mute, and is built to be called from an audio callback. Its invariants
@@ -20,6 +20,10 @@
 //!   already screens each block for NaN; any signal can have a [`Meter`], with
 //!   true peak by ITU-R BS.1770. The audio thread accumulates into atomics and
 //!   the reader takes whenever it likes.
+//! - **Resampling never drifts and never allocates.** [`Resampler`] converts
+//!   between rates with an exact-ratio polyphase filter — flat to 20 kHz,
+//!   aliasing below −120 dB — tracking position in integers and stamping every
+//!   block from its absolute index.
 //!
 //! The vocabulary — [`AudioBuffer`](voltra_core::AudioBuffer), rates, layouts —
 //! lives in `voltra-core`. The design against libobs is in
@@ -73,4 +77,5 @@ pub use error::{Error, Result};
 pub use gain::{Balance, Gain};
 pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode, TrackLevels, TrackMeter};
 pub use mixer::{MixReport, MixSpec, MixTotals, Mixer};
+pub use resample::Resampler;
 pub use track::{TrackControl, TrackId};

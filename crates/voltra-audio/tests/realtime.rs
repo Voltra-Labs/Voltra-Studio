@@ -15,7 +15,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use voltra_audio::{Balance, Gain, Meter, MixSpec, Mixer, PeakMode, TrackControl};
+use voltra_audio::{Balance, Gain, Meter, MixSpec, Mixer, PeakMode, Resampler, TrackControl};
 use voltra_core::{AudioBuffer, ChannelLayout, SampleRate, Timestamp};
 
 thread_local! {
@@ -231,5 +231,37 @@ fn metering_never_allocates() {
             }
         });
         assert_eq!(calls, 0, "metering allocated in {mode:?}");
+    }
+}
+
+#[test]
+fn resampling_never_allocates() {
+    for (from, to) in [
+        (SampleRate::HZ_44100, SampleRate::HZ_48000),
+        (SampleRate::HZ_48000, SampleRate::HZ_44100),
+    ] {
+        let mut resampler = Resampler::new(from, to, ChannelLayout::Stereo, FRAMES).unwrap();
+        let mut input =
+            AudioBuffer::new(from, ChannelLayout::Stereo, FRAMES, Timestamp::ZERO).unwrap();
+        input.as_mut_slice().fill(0.25);
+        let mut output = AudioBuffer::new(
+            to,
+            ChannelLayout::Stereo,
+            resampler.max_output_frames(FRAMES),
+            Timestamp::ZERO,
+        )
+        .unwrap();
+        let mut consumed = 0u64;
+        let calls = allocations_during(|| {
+            // Includes the shrink-and-grow of the output between blocks of
+            // 1114 and 1115 samples, which must stay within its capacity.
+            for _ in 0..200 {
+                input.set_pts(from.pts(consumed));
+                resampler.process(&input, &mut output).unwrap();
+                consumed += FRAMES as u64;
+            }
+        });
+        assert_eq!(calls, 0, "resampling {from} to {to} allocated");
+        assert_eq!(resampler.discontinuities(), 0);
     }
 }

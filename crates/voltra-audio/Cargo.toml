@@ -26,5 +26,9 @@ harness = false
 name = "meter"
 harness = false
 
+[[bench]]
+name = "resample"
+harness = false
+
 [lints]
 workspace = true

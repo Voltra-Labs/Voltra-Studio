@@ -66,4 +66,38 @@ pub enum Error {
         /// The output rate.
         to: SampleRate,
     },
+
+    /// A block in the wrong rate or layout for the resampler.
+    #[error(
+        "block is {found_rate} {found_layout}, resampler expects {expected_rate} {expected_layout}"
+    )]
+    FormatMismatch {
+        /// The rate this side of the resampler runs at.
+        expected_rate: SampleRate,
+        /// The resampler's layout.
+        expected_layout: ChannelLayout,
+        /// The block's rate.
+        found_rate: SampleRate,
+        /// The block's layout.
+        found_layout: ChannelLayout,
+    },
+
+    /// A block longer than the resampler was built for.
+    #[error("block of {frames} frames, resampler built for at most {max}")]
+    BlockTooLarge {
+        /// The block's length.
+        frames: usize,
+        /// The longest block the resampler takes.
+        max: usize,
+    },
+
+    /// The output block cannot hold what this input may produce without
+    /// reallocating.
+    #[error("output holds {capacity} frames, needs {needed}")]
+    OutputTooSmall {
+        /// Frames the output must be able to hold.
+        needed: usize,
+        /// Frames it can hold without reallocating.
+        capacity: usize,
+    },
 }

@@ -55,8 +55,12 @@ rampa cuestan 3,24 µs por bloque de 21,3 ms.
 **medidores**: pico, pico verdadero por BS.1770 y RMS, leídos desde otro hilo
 sin perder ningún pico y sin mutex; medidores antes y después del fader en cada
 pista, medidos en la pasada que ya descartaba NaN; y la balística de OBS como
-función pura y estable. Quedan el remuestreo y la sincronía A/V; si la fase se
-cierra ya o tras ellos está por decidir.
+función pura y estable. El plan 014 añadió el **remuestreo**: polifase de
+razón exacta, plano hasta 20 kHz y con aliasing a −124 dB, frente a −20 dB del
+filtro por defecto de swr que usa OBS, por 37 µs por bloque. Queda la
+**sincronía A/V**, que es también la que conecta el remuestreador al mezclador:
+la cola que reagrupa sus bloques de tamaño variable en los 1024 fijos de la
+mezcla. Si la fase se cierra ya o tras ella está por decidir.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
@@ -77,7 +81,8 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   (plan 011, hecho).
 - Mezclador multipista con volumen, balance/paneo y silencio (plan 012, hecho).
 - Medidores: pico, pico verdadero, RMS y balística (plan 013, hecho).
-- Resampling, sincronía A/V anclada al reloj de audio.
+- Remuestreo polifase de razón exacta (plan 014, hecho).
+- Sincronía A/V anclada al reloj de audio.
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
   **Cumplido** (plan 012).
 
