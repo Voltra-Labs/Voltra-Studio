@@ -1,7 +1,7 @@
 # 013 — Medidores de nivel
 
 - **Fase:** 3
-- **Estado:** propuesto (2026-11-22) — pendiente de aprobación
+- **Estado:** completado (2026-11-22) — ver Resultado
 
 ## Objetivo
 
@@ -305,3 +305,79 @@ no ha funcionado y se investiga antes de seguir.
 - **El CAS de la energía reintenta.** Con un solo lector, como mucho una vez por
   lectura. El test concurrente lo ejercita; si algún día hubiera lectores a
   frecuencia altísima, el diseño correcto es una cola SPSC, no más CAS.
+
+## Resultado
+
+Puerta de calidad en verde: **260 tests** (desde 223), `clippy -D warnings`
+limpio, `fmt` limpio. Cuatro commits, uno por paso: `e018557` (medidores),
+`6ea9ff7` (pico verdadero), `24b82f1` (medidores de pista) y el de la
+balística, que cierra el plan.
+
+### Lo que quedó hecho
+
+En `voltra-audio`: `Meter`/`MeterReader` con `PeakMode::{Sample, True}`,
+`Levels`/`ChannelLevels`; el filtro de BS.1770-5 anexo 2 con historia entre
+bloques; `Mixer::take_track_meter` con `TrackMeter`/`TrackLevels`, entrada y
+salida del fader; y `Ballistics` con `BallisticsConfig::OBS`, `MeterDisplay` y
+`ChannelDisplay`. Sin dependencias nuevas y sin `unsafe` fuera del asignador
+contador de los tests.
+
+### Las cifras
+
+En `docs/PERFORMANCE.md` §2.
+
+- **Pico verdadero: 9,0 µs** por bloque estéreo, el 0,042 % del bloque, frente
+  a un umbral de 213 µs y una estimación de 15–30 µs.
+- **`mix()` con medidores: 3,25 µs** para 8 pistas estables, **+23 %** sobre la
+  línea base de la misma sesión, dentro del +25 %. La primera versión daba
+  +50 %; el plan decía investigar antes de seguir, y se investigó: 16 carriles
+  en vez de 8 en la pasada de pico y energía, y sin la atómica de pico
+  verdadero en las pistas. Los cuatro experimentos, los dos que salieron y los
+  dos que no, están en `PERFORMANCE.md`.
+- **Exactitud del pico verdadero en `f32`**, tonos de 100 Hz a 20 kHz: entre
+  **−0,108 y +0,171 dB**, idéntico al estudio previo en `f64`. El filtro solo,
+  sin tomar también las muestras, llega a −0,197 dB: la decisión de incluirlas,
+  que el plan justificaba en teoría, queda respaldada por una cifra.
+
+### Dos fallos que encontraron los tests
+
+- **La duración de una lectura se contaba doble.** `Levels::frames` salía del
+  máximo de los contadores por canal; una lectura que cae entre el canal 0 y el
+  1 de un bloque lo cuenta en dos lecturas. El test concurrente lo vio a la
+  primera: 20,4 millones de muestras leídas para 10,2 millones escritas. Ahora
+  la duración es un contador único del medidor, sumado una vez por bloque; el
+  RMS de cada canal sigue usando su par energía/muestras empaquetado.
+- **El contador de asignaciones del plan 012 era compartido entre hilos.** Con
+  dos tests armados a la vez, cada uno sumaba las asignaciones del otro. Con un
+  solo test armado nunca se notó; al añadir el segundo, falló de forma
+  intermitente. Ahora el recuento es por hilo. No había ninguna asignación real:
+  con el contador corregido, ambos dan cero.
+
+## Desviaciones respecto al plan
+
+- **El pico verdadero usa ventanas deslizantes**, la alternativa del plan, no
+  las 48 pasadas sobre un búfer de trabajo. Midió 9–10 µs, muy por debajo del
+  umbral, y no necesita búfer, así que `Meter::new` no tiene que conocer el
+  tamaño de bloque.
+- **Una muestra al final de un bloque se interpola en el siguiente.** El filtro
+  está centrado unas seis muestras atrás. No se pierde nada —el pico por
+  muestra la recoge en el acto, y el test lo comprueba—, pero el plan decía
+  "se miden todas las muestras" sin mencionar ese retraso de 0,125 ms.
+- **La balística usa dos relojes**, no solo el `elapsed` del llamante. El pico
+  y su retención siguen el tiempo de pared; el RMS integra el tiempo de audio
+  de la lectura (sus muestras entre la frecuencia). Con un repintado a 60 Hz y
+  bloques a 47 Hz, muchas lecturas llegan vacías, y tratarlas como silencio
+  haría parpadear la barra. Por eso `Ballistics::new` recibe la frecuencia de
+  muestreo.
+- **`Levels::frames` es `u64`**, no `u32`: es el contador del medidor entero, y
+  no tiene por qué saturar.
+- **El "99 % en 300 ms" se mide en potencia**, no en dB como en OBS: es lo que
+  significa integrar potencia.
+- **La pasada de estadísticas tiene 16 carriles**, no los 8 de `all_finite`:
+  medido (ver Resultado).
+- **Un bloque cuya energía desborda `f32`** —muestras de más de ~10¹⁹— cuenta
+  como no finito. Consecuencia de detectar el NaN por la suma de cuadrados;
+  ninguna señal real se acerca, y está documentado en `Mixer::mix`.
+- **El techo del +25 % se cumple en 8 pistas, no en 64**, que suben un +32 %
+  (20,6 → 26,6 µs, el 0,12 % del bloque). El criterio se escribió para 8; se
+  anota para que nadie lo descubra después.

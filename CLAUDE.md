@@ -291,7 +291,10 @@ una sola asignación—. El plan 012 dejó el mezclador en `voltra-audio`: volum
 balance/paneo y silencio por pista con rampa de un bloque, control desde otro
 hilo por atómicos y aislamiento de fallos por pista. `Mixer::mix` no asigna ni
 bloquea: lo vigilan un test con asignador contador y un `clippy.toml` que
-prohíbe los mutexes en la crate. Quedan medidores, remuestreo y sincronía A/V.
+prohíbe los mutexes en la crate. El plan 013 dejó los medidores: pico, pico
+verdadero por BS.1770 y RMS acumulados en atómicos —ningún pico se pierde, nadie
+espera—, medidores de entrada y salida en cada pista sin pasada extra, y la
+balística de OBS como función pura. Quedan remuestreo y sincronía A/V.
 Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
@@ -308,4 +311,5 @@ Formato de salida actual: `docs/references/y4m.md`.
 Composición acelerada: `docs/references/gpu-compositing.md`.
 Representación de audio: `docs/references/audio.md`.
 Mezclador de audio: `docs/references/audio-mixer.md`.
+Medidores de nivel: `docs/references/audio-meters.md`.
 Fases del producto: `docs/ROADMAP.md`.

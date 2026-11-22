@@ -14,6 +14,7 @@ mod stats;
 mod track_meter;
 mod true_peak;
 
+pub(crate) use levels::to_db;
 pub use levels::{ChannelLevels, Levels};
 pub use standalone::{Meter, MeterReader, PeakMode};
 pub(crate) use stats::peak_and_energy;

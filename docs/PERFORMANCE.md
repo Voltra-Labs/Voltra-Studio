@@ -111,6 +111,38 @@ El criterio de aceptación era 8 pistas en rampa por debajo del 1 % del bloque
    lo que compra —que una fuente rota no silencie a las demás— vale mucho más
    que un microsegundo.
 
+Los medidores (plan 013), por bloque de 1024 frames estéreo a 48 kHz:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| `Meter`, pico por muestra y RMS | 222 ns | 0,001 % | 013 |
+| **`Meter`, pico verdadero (BS.1770, ×4, 48 coeficientes)** | **9,0 µs** | **0,042 %** | 013 |
+| `mix()` 8 pistas estéreo, estable, **con medidores de pista** | 3,25 µs | 0,015 % | 013 |
+| `mix()` 8 pistas estéreo, en rampa, con medidores | 3,81 µs | 0,018 % | 013 |
+| `mix()` 64 pistas estéreo, estable, con medidores | 26,6 µs | 0,12 % | 013 |
+| `mix()` 8 pistas mono con paneo, con medidores | 2,59 µs | 0,012 % | 013 |
+
+Las cifras de `mix()` de la tabla anterior quedan como el antes. El después,
+medido contra una línea base tomada en la misma sesión (2,66 µs para 8 pistas
+estables): **+23 %**, dentro del techo del +25 % que fijó el plan. La primera
+versión daba **+50 %** (4,08 µs), y cerrarlo costó dos cambios medidos:
+
+| Hipótesis | Resultado |
+|---|---|
+| La pasada de pico y energía, con 8 carriles, espera a la latencia de sus sumas (dos registros SSE por acumulador) | **Sí.** 16 carriles: 305 → 255 ns por bloque estéreo; `mix()` 4,08 → 3,40 µs. Aplicado. |
+| Más carriles, más rápido | **No.** 32 carriles: 310 ns y 4,35 µs; se acaban los 16 registros SSE. Descartado. |
+| Las atómicas pesan: los medidores de pista hacían un `fetch_max` de pico verdadero que siempre valía 0 | **Sí.** Sin él, y con una lectura relajada antes de cada `fetch_max` del pico: 3,40 → 3,25 µs. Aplicado. |
+| `f32::max` vale para el máximo | **No.** 854 ns frente a 304 por bloque estéreo, 2,8× más lento: su regla de NaN impide la instrucción vectorial. Se usa comparación explícita. |
+
+Lo que queda del +23 % es trabajo real: la pasada antigua solo detectaba NaN
+(~150 ns por pista); la nueva saca además pico y energía (~255 ns). Medir cada
+pista cuesta unos 0,1 µs por bloque, y no cuesta una pasada más.
+
+El pico verdadero cuesta **40× el pico por muestra**, que es lo que el diseño
+supuso al dejarlo opcional y solo en la salida. Al 0,04 % del bloque, sigue
+siendo despreciable para un medidor; no lo sería en cada una de 64 pistas
+(0,6 ms), y por eso no está ahí.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

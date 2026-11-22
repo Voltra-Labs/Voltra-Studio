@@ -51,10 +51,12 @@ volumen, balance/paneo y silencio, controladas desde otro hilo con atómicos, y
 asignaciones y por un lint que prohíbe los mutexes en la crate. 8 pistas en
 rampa cuestan 3,24 µs por bloque de 21,3 ms.
 
-**El criterio de salida de la fase 3 se cumple.** Quedan en su contenido los
-medidores, el remuestreo y la sincronía A/V; si la fase se cierra ya o tras
-ellos está por decidir. El siguiente paso natural son los **medidores**, que el
-mezclador necesita para que una interfaz pueda mostrar algo.
+**El criterio de salida de la fase 3 se cumple.** El plan 013 añadió los
+**medidores**: pico, pico verdadero por BS.1770 y RMS, leídos desde otro hilo
+sin perder ningún pico y sin mutex; medidores antes y después del fader en cada
+pista, medidos en la pasada que ya descartaba NaN; y la balística de OBS como
+función pura y estable. Quedan el remuestreo y la sincronía A/V; si la fase se
+cierra ya o tras ellos está por decidir.
 
 Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
 también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
@@ -74,7 +76,8 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 - Vocabulario: frecuencia, canales, formatos de borde, búfer float planar
   (plan 011, hecho).
 - Mezclador multipista con volumen, balance/paneo y silencio (plan 012, hecho).
-- Medidores, resampling, sincronía A/V anclada al reloj de audio.
+- Medidores: pico, pico verdadero, RMS y balística (plan 013, hecho).
+- Resampling, sincronía A/V anclada al reloj de audio.
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
   **Cumplido** (plan 012).
 

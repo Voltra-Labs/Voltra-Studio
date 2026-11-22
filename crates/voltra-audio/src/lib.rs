@@ -59,6 +59,7 @@
 #[cfg(not(all(target_has_atomic = "32", target_has_atomic = "64")))]
 compile_error!("voltra-audio needs lock-free 32- and 64-bit atomics");
 
+mod ballistics;
 mod error;
 mod gain;
 mod kernel;
@@ -66,6 +67,7 @@ mod meter;
 mod mixer;
 mod track;
 
+pub use ballistics::{Ballistics, BallisticsConfig, ChannelDisplay, MeterDisplay};
 pub use error::{Error, Result};
 pub use gain::{Balance, Gain};
 pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode, TrackLevels, TrackMeter};
