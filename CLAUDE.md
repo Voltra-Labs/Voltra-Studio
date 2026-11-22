@@ -274,19 +274,25 @@ voltra render -o - --frames 300 | ffplay -
 cargo run --release -p voltra-cli --features gpu -- render -o demo.y4m --gpu
 ```
 
-Crates vivas: `voltra-core`, `voltra-render`, `voltra-sources`, `voltra-output`
-y `voltra-cli`; las demás se crearán cuando haya código que meter en ellas.
+Crates vivas: `voltra-core`, `voltra-audio`, `voltra-render`, `voltra-sources`,
+`voltra-output` y `voltra-cli`; las demás se crearán cuando haya código que
+meter en ellas.
 
 **La fase 2 no se cierra por falta de una medición, no de código.** Su criterio
 de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 (§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
-**Fase 3 arrancada.** El plan 011 dejó el vocabulario de audio en `voltra-core`:
-`SampleRate` con aritmética exacta, `ChannelLayout`, los formatos de borde y
-`AudioBuffer` —float de 32 bits planar, una sola asignación—. Siguiente paso: el
-mezclador, que es el criterio de salida de la fase. Secuencia en
-`docs/ROADMAP.md`.
+
+**Fase 3 en curso, con su criterio de salida cumplido.** El plan 011 dejó el
+vocabulario de audio en `voltra-core`: `SampleRate` con aritmética exacta,
+`ChannelLayout`, los formatos de borde y `AudioBuffer` —float de 32 bits planar,
+una sola asignación—. El plan 012 dejó el mezclador en `voltra-audio`: volumen,
+balance/paneo y silencio por pista con rampa de un bloque, control desde otro
+hilo por atómicos y aislamiento de fallos por pista. `Mixer::mix` no asigna ni
+bloquea: lo vigilan un test con asignador contador y un `clippy.toml` que
+prohíbe los mutexes en la crate. Quedan medidores, remuestreo y sincronía A/V.
+Secuencia en `docs/ROADMAP.md`.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -301,4 +307,5 @@ Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
 Composición acelerada: `docs/references/gpu-compositing.md`.
 Representación de audio: `docs/references/audio.md`.
+Mezclador de audio: `docs/references/audio-mixer.md`.
 Fases del producto: `docs/ROADMAP.md`.

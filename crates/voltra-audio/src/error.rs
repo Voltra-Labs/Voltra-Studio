@@ -1,13 +1,21 @@
 //! Errors of the audio crate.
 //!
 //! Every variant carries only `Copy` data, so building one never allocates.
+//! That matters for the one error [`Mixer::mix`](crate::Mixer::mix) can return,
+//! which is built on the audio thread.
 
 use voltra_core::ChannelLayout;
+
+use crate::mixer::MixSpec;
 
 /// Result alias for this crate.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// What can go wrong configuring or driving a mixer.
+///
+/// Failures of a single track inside a block are **not** errors: they are
+/// counted in [`MixReport`](crate::MixReport) and against the track, because one
+/// broken source must not stop the others from sounding.
 #[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -20,6 +28,10 @@ pub enum Error {
         mix: ChannelLayout,
     },
 
+    /// A mix needs at least one frame per block.
+    #[error("a mix block needs at least one frame")]
+    EmptyBlock,
+
     /// A gain that is NaN, infinite, negative or above [`Gain::MAX`](crate::Gain::MAX).
     #[error("invalid gain: {0} (expected 0 ..= 10, linear)")]
     InvalidGain(f32),
@@ -27,4 +39,17 @@ pub enum Error {
     /// A balance that is NaN or outside `-1 ..= 1`.
     #[error("invalid balance: {0} (expected -1 ..= 1)")]
     InvalidBalance(f32),
+
+    /// The output buffer handed to `mix` does not match the mixer.
+    #[error("output buffer is {found:?}, mixer expects {expected:?}")]
+    OutputMismatch {
+        /// What the mixer was built for.
+        expected: MixSpec,
+        /// What the output buffer is.
+        found: MixSpec,
+    },
+
+    /// Track identifiers are never reused, and this mixer has used them all.
+    #[error("track identifiers exhausted")]
+    TooManyTracks,
 }

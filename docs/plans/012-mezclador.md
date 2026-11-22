@@ -1,7 +1,7 @@
 # 012 — Mezclador de audio
 
 - **Fase:** 3
-- **Estado:** propuesto (2026-11-22) — pendiente de aprobación
+- **Estado:** completado (2026-11-22) — ver Resultado
 
 ## Objetivo
 
@@ -338,3 +338,68 @@ hallazgo, no un aprobado. Más los tests de tiempo real en verde.
   es lo mínimo que necesita un fader —escribir, leer, ver fallos—, y todo lo
   estructural (añadir, quitar) queda en `&mut Mixer`, donde no hay que
   adivinar nada.
+
+## Resultado
+
+Puerta de calidad en verde: **223 tests** (desde 183), `clippy -D warnings`
+limpio, `fmt` limpio. `voltra-audio` aporta 40: 33 unitarios, 3 de tiempo real
+y 4 doctests.
+
+### Lo que quedó hecho
+
+La crate `voltra-audio` con `Gain`, `Balance`, las tres leyes de ganancia por
+canal, `TrackControl` sobre atómicos, `Mixer` con `MixSpec`, `MixReport` y
+`MixTotals`, el test de tiempo real `tests/realtime.rs` y `benches/mix.rs`.
+
+### El criterio de salida de la fase, comprobado
+
+- **Cero asignaciones** en 10 000 bloques que recorren todos los caminos:
+  rampas, fundidos de silencio, paneo, NaN, desalineación, pistas repetidas y
+  ausentes. Un test previo comprueba que el contador sí ve una asignación, para
+  que el bueno no pase en vacío.
+- **Ningún bloqueo posible**: se metió un `Mutex` a propósito en la crate y
+  `clippy -D warnings` lo rechazó (`use of a disallowed type std::sync::Mutex`);
+  después se retiró. El riesgo de que Clippy no leyera un `clippy.toml` por
+  crate no se materializó.
+- Un hilo martillea ganancia, balance y silencio mientras otro mezcla 10 000
+  bloques: ninguna muestra sale no finita ni por encima del techo teórico.
+
+### Las cifras
+
+En `docs/PERFORMANCE.md` §2. **8 pistas estéreo, todas en rampa: 3,24 µs**, el
+0,015 % del bloque de 21,3 ms y **65× por debajo** del umbral de aceptación
+(213 µs). La estimación del plan —"unos pocos µs"— se cumplió. La escala es
+lineal (64 pistas, 20,9 µs), la rampa cuesta un 20 % sobre la ganancia estable,
+así que el plan B de rampa por tramos no hizo falta, y el aislamiento de NaN es
+hasta la mitad del coste, que en absoluto sigue siendo despreciable.
+
+## Desviaciones respecto al plan
+
+- **Dos commits en vez de uno**, como preveía el propio plan: el código
+  productivo, sin comentarios ni tests, salió en ~500 líneas. El primero lleva
+  la crate, los tipos y las leyes; el segundo, el mezclador. El primero marca
+  `Routing` con `allow(dead_code)` porque su consumidor llega en el segundo, que
+  lo quita.
+- **`add_track` devuelve solo `TrackControl`**, no `(TrackId, TrackControl)`: el
+  control ya sabe su `id()`, y la tupla repetía el dato.
+- **`mix` devuelve `Result<MixReport>`.** El plan decía que de `mix()` no sale
+  ningún error, y sigue siendo cierto para las pistas: ningún fallo de pista se
+  propaga. Pero un búfer de salida con otro formato es un error del llamante,
+  no de una pista, y silenciarlo sería peor. `Error::OutputMismatch` solo lleva
+  datos `Copy`, así que construirlo no asigna, y `out` queda intacto.
+- **La rampa es `(k + 1) / frames`**, no `k / (frames − 1)`: la primera muestra
+  ya está un paso más allá de la ganancia vieja y la última cae en la nueva. El
+  bloque anterior terminó en la vieja, y repetirla sería retener una muestra. El
+  test comprueba esta forma en lugar de "primera muestra en la ganancia vieja".
+- **Errores:** `EmptyBlock` en lugar de `InvalidSpec`, porque es el único caso;
+  y `TooManyTracks`, no previsto, porque los identificadores no se reutilizan y
+  `u32` se puede agotar en teoría.
+- **Repetidas y desconocidas no cuentan como fallo de pista**, solo como
+  `rejected`: la primera copia de una pista repetida sí suena, y una pista
+  desconocida no tiene a quién apuntarle el fallo. Un bloque que no llega
+  tampoco es un fallo: va a `missing`.
+- **Dos lints de Clippy permitidos con razón escrita**: `eq_op` en
+  `all_finite`, donde `x - x` es la prueba misma, y `float_cmp` en la
+  comparación de ganancias, donde la igualdad exacta es lo que se quiere decir
+  ("no cambió desde el bloque anterior"). En los tests se permite `float_cmp`
+  porque comprueban resultados exactos a propósito.

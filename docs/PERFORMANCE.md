@@ -9,6 +9,7 @@ Reproducir todo:
 ```bash
 cargo bench -p voltra-core
 cargo bench -p voltra-render
+cargo bench -p voltra-audio
 # El pipeline completo se mide solo: rendering y métricas por etapa a stderr.
 cargo run --release -p voltra-cli -- render -o /dev/null --size 1920x1080 --frames 60
 ```
@@ -80,6 +81,35 @@ Dos observaciones, ninguna accionable todavía:
 
 Ninguna se optimiza: el peor caso es el **0,01 % del bloque**. Están anotadas
 para que nadie las descubra otra vez creyendo que ha encontrado algo.
+
+El mezclador (plan 012), por bloque de 1024 frames estéreo a 48 kHz, con las
+pistas a ganancias distintas de 1 para que ningún atajo se cuele en la medida:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| Mezclar 1 pista estéreo, ganancia estable | 365 ns | 0,002 % | 012 |
+| **Mezclar 8 pistas estéreo, ganancia estable** | **2,70 µs** | **0,013 %** | 012 |
+| Mezclar 64 pistas estéreo, ganancia estable | 20,9 µs | 0,098 % | 012 |
+| Mezclar 8 pistas mono con paneo a estéreo | 2,15 µs | 0,010 % | 012 |
+| **Mezclar 8 pistas estéreo, todas en rampa** | **3,24 µs** | **0,015 %** | 012 |
+| Solo la comprobación de finitos, 8 pistas (todas rechazadas) | 1,22 µs | 0,006 % | 012 |
+
+El criterio de aceptación era 8 pistas en rampa por debajo del 1 % del bloque
+(213 µs): queda **65× por debajo**. Tres lecturas:
+
+1. **Escala lineal.** De 8 a 64 pistas, 7,7× el tiempo para 8× el trabajo:
+   unos 0,33 µs por pista estéreo, ~6 Gmuestras/s. 64 pistas son el 0,1 % del
+   bloque; el número de pistas no va a ser el límite de nada.
+2. **La rampa cuesta un 20 %** sobre la ganancia estable (3,24 frente a
+   2,70 µs). Es lo que se esperaba de un bucle que vectoriza con un flujo más;
+   el plan B de rampa por tramos (riesgo del plan 012) no hace falta.
+3. **El aislamiento de NaN es hasta la mitad del coste**: como mucho 1,22 de
+   2,70 µs —la cifra incluye silenciar la salida y la contabilidad—, una
+   lectura completa de cada bloque antes de sumarlo. Es caro en proporción y
+   gratis en absoluto (0,006 % del bloque). Fusionarlo con la suma ahorraría
+   una pasada a cambio de no poder retirar la pista una vez sumada. No se toca:
+   lo que compra —que una fuente rota no silencie a las demás— vale mucho más
+   que un microsegundo.
 
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la

@@ -93,6 +93,11 @@ impl Gain {
     pub fn db(self) -> f32 {
         20.0 * self.0.log10()
     }
+
+    /// Rebuild from bits that were stored from a valid gain.
+    pub(crate) const fn from_bits(bits: u32) -> Self {
+        Self(f32::from_bits(bits))
+    }
 }
 
 impl Default for Gain {
@@ -136,20 +141,17 @@ impl Balance {
     pub const fn position(self) -> f32 {
         self.0
     }
+
+    /// Rebuild from bits that were stored from a valid balance.
+    pub(crate) const fn from_bits(bits: u32) -> Self {
+        Self(f32::from_bits(bits))
+    }
 }
 
 /// Gains per output channel. Channels beyond the mix's are zero.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "consumed by the mixer, next step")
-)]
 pub(crate) type ChannelGains = [f32; MAX_CHANNELS];
 
 /// How a track's channels reach the mix's channels.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "consumed by the mixer, next step")
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Routing {
     /// Channel `c` feeds channel `c`; balance does not apply.
@@ -160,10 +162,6 @@ pub(crate) enum Routing {
     MonoToStereo,
 }
 
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "consumed by the mixer, next step")
-)]
 impl Routing {
     /// The routing for a track layout into a mix layout, if there is one.
     ///
@@ -174,6 +172,14 @@ impl Routing {
             (ChannelLayout::Mono, ChannelLayout::Stereo) => Some(Self::MonoToStereo),
             (track, mix) if track == mix => Some(Self::Direct),
             _ => None,
+        }
+    }
+
+    /// Which track channel feeds mix channel `output`.
+    pub(crate) const fn source_channel(self, output: usize) -> usize {
+        match self {
+            Self::Direct | Self::StereoBalance => output,
+            Self::MonoToStereo => 0,
         }
     }
 
@@ -213,10 +219,6 @@ impl Routing {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "consumed by the mixer, next step")
-)]
 /// The attenuation of one side for a balance moved `away` (0 ..= 1) from it.
 ///
 /// `cos(π/2)` in `f32` is `-4e-8`, not zero; clamping makes hard left and hard
