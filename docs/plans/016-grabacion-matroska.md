@@ -1,8 +1,9 @@
 # 016 — Grabación a Matroska
 
 - **Fase:** 4
-- **Estado:** en curso (2026-11-22) — ejecutado sin esperar revisión del plan,
-  por indicación expresa del responsable ("no me preguntes, dale")
+- **Estado:** completado (2026-11-22) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale").
 
 ## Objetivo
 
@@ -151,3 +152,46 @@ el disco, como ya mostró Y4M (`PERFORMANCE.md` §3.5).
   para este paso.
 - **CI sin FFmpeg.** Los tests de oráculo se saltan y lo dicen; el resto de la
   verificación no los necesita. Instalarlo en CI es una línea, si hace falta.
+
+## Resultado
+
+Puerta de calidad en verde: **314 tests** (desde 295), `clippy -D warnings`
+limpio, `fmt` limpio. Tres commits: documentos (referencia, ADR 0005 y plan), el
+muxer y `voltra record`.
+
+### Lo que dice FFmpeg del fichero
+
+- **Pistas:** `rawvideo` `yuv420p` al tamaño pedido y `pcm_f32le` estéreo a
+  48 kHz; 120 fotogramas en 4 s a 30 fps; duración 4,011 s (el último bloque de
+  audio llega a 4,0107 s); decodificado entero sin un solo aviso.
+- **Sincronía A/V, medida en el fichero decodificado:** el pitido de cada
+  segundo empieza **20,8 µs** después de su destello, igual en los cinco
+  segundos medidos: deriva cero. Los 20,8 µs son una muestra, porque el tono es
+  un seno que empieza en fase cero y su primera muestra vale exactamente 0. El
+  margen que pedía el plan era medio fotograma, 16,7 ms.
+- **Truncado al 60 %**, a mitad de un bloque como lo dejaría un cuelgue: se lee
+  y se cuentan los fotogramas hasta el corte.
+- **Por la salida estándar:** `voltra record -o -` produce un Matroska que
+  `ffprobe` lee entero, porque se escribe en flujo.
+
+### Coste
+
+Muxear es menos de un microsegundo por fotograma 1080p y por bloque de audio.
+Grabar 5 s a 1080p30 sin comprimir lleva 2,96 s, casi todo composición y
+conversión en CPU; el disco añade un 6 %.
+
+## Desviaciones respecto al plan
+
+- **La marca de sincronía del segundo 0 no se mide**: el mezclador funde cada
+  pista nueva durante su primer bloque (plan 012), y el primer pitido empieza
+  demasiado bajo para fecharlo. El test lo explica y mide los demás.
+- **La regla del fotograma marcado estaba mal en la primera versión**: con
+  `div_ceil` marcaba el fotograma *siguiente* al de cada segundo; FFmpeg lo
+  enseñó en la primera grabación (destellos en 1, 31, 61, 91). Es el segundo
+  entero redondeado hacia abajo el que cambia, y el test unitario lo fija para
+  30 y 29,97 fps.
+- **`voltra record -o -`** escribe a la salida estándar con `finish`, sin
+  duración declarada. El plan solo hablaba de ficheros; salió gratis del diseño
+  en flujo y tiene su test.
+- **El test de truncado vive en el muxer**, no en `voltra record`: lo que se
+  prueba es el formato, y allí no depende de la escena.

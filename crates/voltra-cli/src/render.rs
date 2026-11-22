@@ -269,7 +269,7 @@ fn millis(duration: Duration) -> f64 {
 }
 
 /// Parse `WIDTHxHEIGHT`.
-fn parse_size(value: &str) -> std::result::Result<FrameSize, String> {
+pub(crate) fn parse_size(value: &str) -> std::result::Result<FrameSize, String> {
     let (width, height) = value
         .split_once(['x', 'X'])
         .ok_or_else(|| format!("expected WIDTHxHEIGHT, got `{value}`"))?;
@@ -291,7 +291,7 @@ fn parse_size(value: &str) -> std::result::Result<FrameSize, String> {
 ///
 /// Kept as an exact ratio rather than a float, which is the whole reason the
 /// clock of plan 002 is rational: 29.97 written as a decimal drifts.
-fn parse_fps(value: &str) -> std::result::Result<Fps, String> {
+pub(crate) fn parse_fps(value: &str) -> std::result::Result<Fps, String> {
     let (num, den) = match value.split_once(['/', ':']) {
         Some((num, den)) => (num, den),
         None => (value, "1"),

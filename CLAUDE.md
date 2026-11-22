@@ -297,6 +297,18 @@ también extremo a extremo con dos hilos, y un `clippy.toml` que prohíbe los
 mutexes en la crate. La deriva de relojes pasó a la fase 5 y el reloj A/V a la
 fase 4 (`docs/ROADMAP.md`).
 
+**Fase 4 en curso.** El plan 016 dejó un muxer Matroska nativo en
+`voltra-output`, escrito en flujo (ADR 0005), y `voltra record`, que graba la
+escena con sonido —vídeo I420 y PCM float, aún sin comprimir— con la sincronía
+A/V medida por FFmpeg en el propio fichero: una muestra, sin deriva.
+
+```bash
+voltra record -o demo.mkv --seconds 10
+voltra record -o - | ffplay -
+```
+
+Siguiente paso: los encoders (ADR 0003).
+
 Decisiones ya tomadas (ver `docs/adr/`):
 
 | ADR | Decisión |
@@ -305,6 +317,7 @@ Decisiones ya tomadas (ver `docs/adr/`):
 | 0002 | Plataforma prioritaria: Linux (PipeWire + Wayland). |
 | 0003 | Encoding: hardware primero y sin copia a CPU; software solo como respaldo. |
 | 0004 | Interfaz: `egui`/`eframe`. |
+| 0005 | Grabación: Matroska nativo, escrito en flujo; MP4 después, por remuxeo. |
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
@@ -314,4 +327,5 @@ Mezclador de audio: `docs/references/audio-mixer.md`.
 Medidores de nivel: `docs/references/audio-meters.md`.
 Remuestreo: `docs/references/audio-resampling.md`.
 Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
+Grabar a fichero: `docs/references/recording.md`.
 Fases del producto: `docs/ROADMAP.md`.

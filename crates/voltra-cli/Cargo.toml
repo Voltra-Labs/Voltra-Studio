@@ -19,6 +19,7 @@ default = []
 gpu = ["voltra-render/gpu"]
 
 [dependencies]
+voltra-audio = { workspace = true }
 voltra-core = { workspace = true }
 voltra-output = { workspace = true }
 voltra-render = { workspace = true }

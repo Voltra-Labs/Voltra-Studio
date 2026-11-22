@@ -73,10 +73,15 @@ reparte donde se puede medir.
   ("sin deriva A/V") es exactamente esa medida, y que trae el pipeline donde
   hacerla.
 
-Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
-también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
-momento en que el programa sirve para algo, streaming (fase 6) e interfaz
-(fase 7).
+**La fase 4 está en marcha.** El plan 016 dejó un muxer Matroska nativo que
+escribe en flujo —válido en cada byte, así que un cuelgue deja una grabación
+reproducible— y `voltra record`, que graba la escena con un tono mezclado por el
+mezclador de la fase 3. FFmpeg lee el fichero, y la sincronía medida en él es de
+una muestra, sin deriva. Falta comprimir: el siguiente paso son los **encoders**
+(ADR 0003) entregando paquetes a este mismo muxer.
+
+Después: captura con PipeWire (fase 5), el momento en que el programa sirve para
+algo, streaming (fase 6) e interfaz (fase 7).
 
 Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 
@@ -99,7 +104,9 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   **Cumplido** (plan 012). **Fase cerrada** con el plan 015.
 
 ## Fase 4 — Salida a fichero
-- Codificación de vídeo y audio, muxing, grabación real reproducible.
+- Muxer Matroska nativo en flujo y `voltra record` con A/V sincronizado y
+  medido por FFmpeg, aún sin comprimir (plan 016, hecho; ADR 0005).
+- Codificación de vídeo y audio y grabación comprimida.
 - El vídeo anclado al reloj de audio (venido de la fase 3).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni
   crecimiento de memoria.

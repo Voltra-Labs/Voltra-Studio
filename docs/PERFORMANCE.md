@@ -181,6 +181,21 @@ Extremo a extremo —fuente a 44,1 kHz con ±5 ms de fluctuación en un hilo,
 mezcla a 48 kHz en otro, 85 ms de latencia—, el margen mínimo antes de cada tick
 fue de **1976 muestras (41 ms)**, y el error frente al tono ideal, **−136 dB**.
 
+La grabación a Matroska (plan 016):
+
+| Operación | Coste | Plan |
+|---|---|---|
+| Muxear un fotograma I420 1080p, a `io::sink()` | 0,66 µs | 016 |
+| Muxear un bloque de 1024 muestras estéreo float, a `io::sink()` | 0,31 µs | 016 |
+| `voltra record`, 5 s a 1080p30, a fichero (468 MB) | 2,96 s | 016 |
+| Lo mismo, a `/dev/null` | 2,78 s | 016 |
+
+El muxer no cuenta: menos de un microsegundo por fotograma, porque escribe las
+filas de cada plano tal cual y la cabecera de cada bloque son unos pocos bytes.
+Grabar es componer y convertir en CPU —los ~18,5 ms por fotograma de §2— más el
+disco, que aquí añade un 6 % a 94 MB/s. Sin comprimir, el fichero es el problema
+(§3.5); el arreglo es el encoder, el plan siguiente.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

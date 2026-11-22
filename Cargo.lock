@@ -1061,6 +1061,7 @@ dependencies = [
  "clap",
  "tracing",
  "tracing-subscriber",
+ "voltra-audio",
  "voltra-core",
  "voltra-output",
  "voltra-render",
