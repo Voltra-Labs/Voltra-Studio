@@ -76,6 +76,7 @@ mod track;
 pub use ballistics::{Ballistics, BallisticsConfig, ChannelDisplay, MeterDisplay};
 pub use error::{Error, Result};
 pub use gain::{Balance, Gain};
+pub use input::{InputReader, InputSpec, InputStats, InputWriter, PullOutcome, audio_input};
 pub use meter::{ChannelLevels, Levels, Meter, MeterReader, PeakMode, TrackLevels, TrackMeter};
 pub use mixer::{MixReport, MixSpec, MixTotals, Mixer};
 pub use resample::Resampler;

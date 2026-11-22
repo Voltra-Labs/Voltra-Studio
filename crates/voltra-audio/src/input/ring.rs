@@ -3,8 +3,16 @@
 //! Positions are **absolute sample indices** that only grow; the slot of index
 //! `i` is `i mod capacity`. The producer stores samples and then publishes how
 //! far it has written with `Release`; the consumer loads that with `Acquire`,
-//! reads, and publishes how far it has read, which the producer loads with
+//! reads, and advances how far it has read, which the producer loads with
 //! `Acquire` before overwriting. Neither ever waits for the other.
+//!
+//! The read position only moves forward, by `fetch_max`, and **either side may
+//! move it**: the consumer as ticks pass, and the producer when the ring holds
+//! nothing unread and a block lands further ahead than the ring is long — the
+//! skipped indices carry no data, so nothing is lost. A consumer must load the
+//! written position *before* the read position: the producer raises the read
+//! position before it publishes, so that order never pairs a new written
+//! position with a read position from before the jump.
 //!
 //! Every sample is an `AtomicU32` holding `f32` bits, accessed with `Relaxed`.
 //! That keeps the ring in safe code — no `UnsafeCell`, no `unsafe` — and makes
@@ -21,7 +29,7 @@ pub(crate) struct Ring {
     capacity: usize,
     /// One past the last index the producer has published.
     written: AtomicU64,
-    /// One past the last index the consumer has released.
+    /// The first index still wanted: everything before it is used or skipped.
     read: AtomicU64,
 }
 
@@ -83,9 +91,10 @@ impl Ring {
         }
     }
 
-    /// Consumer: give everything before `read` back to the producer.
-    pub(crate) fn release(&self, read: u64) {
-        self.read.store(read, Ordering::Release);
+    /// Move the read position forward to `read`, never back: the consumer
+    /// releasing what it has used, or the producer skipping an empty stretch.
+    pub(crate) fn advance_read(&self, read: u64) {
+        self.read.fetch_max(read, Ordering::AcqRel);
     }
 
     /// The slots of `channel` for indices `at .. at + len`, wrapping around.
@@ -144,8 +153,13 @@ mod tests {
         ring.silence(0, 1_000_007, 2);
         ring.read(0, 1_000_005, &mut out);
         assert_eq!(out, [1.0, 2.0, 0.0, 0.0, 5.0, 6.0]);
-        ring.release(1_000_011);
-        assert_eq!(ring.read_index(), 1_000_011);
+        ring.advance_read(1_000_011);
+        ring.advance_read(1_000_000);
+        assert_eq!(
+            ring.read_index(),
+            1_000_011,
+            "the read position never moves back"
+        );
     }
 
     #[test]
@@ -192,7 +206,7 @@ mod tests {
                 assert_eq!(sample, ((read + offset as u64) % 16_777_216) as f32);
             }
             read += len as u64;
-            ring.release(read);
+            ring.advance_read(read);
         }
         producer.join().unwrap();
     }
