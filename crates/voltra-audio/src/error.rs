@@ -4,7 +4,7 @@
 //! That matters for the one error [`Mixer::mix`](crate::Mixer::mix) can return,
 //! which is built on the audio thread.
 
-use voltra_core::ChannelLayout;
+use voltra_core::{ChannelLayout, SampleRate};
 
 use crate::mixer::MixSpec;
 
@@ -52,4 +52,18 @@ pub enum Error {
     /// Track identifiers are never reused, and this mixer has used them all.
     #[error("track identifiers exhausted")]
     TooManyTracks,
+
+    /// A resampler from a rate to itself: nothing to convert.
+    #[error("cannot resample {0} to itself")]
+    SameRate(SampleRate),
+
+    /// The reduced ratio between the rates needs more polyphase phases than
+    /// the resampler supports. No pair of standard rates does.
+    #[error("cannot resample {from} to {to}: the ratio needs too many phases")]
+    UnsupportedRatio {
+        /// The input rate.
+        from: SampleRate,
+        /// The output rate.
+        to: SampleRate,
+    },
 }

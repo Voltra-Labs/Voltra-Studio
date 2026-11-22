@@ -100,6 +100,15 @@ impl AudioBuffer {
         self.frames
     }
 
+    /// Samples per channel this buffer can hold at its current layout without
+    /// reallocating.
+    ///
+    /// [`reshape`](Self::reshape) never allocates while the new size fits here,
+    /// which is what lets a real-time stage resize its output block by block.
+    pub fn capacity_frames(&self) -> usize {
+        self.data.capacity() / self.layout.channels()
+    }
+
     /// The timestamp of the first sample.
     pub const fn pts(&self) -> Timestamp {
         self.pts
@@ -313,5 +322,28 @@ mod tests {
         assert_eq!(buffer.as_slice().as_ptr(), before, "shrinking reallocated");
 
         assert!(buffer.reshape(ChannelLayout::Stereo, 0).is_err());
+    }
+
+    #[test]
+    fn capacity_survives_shrinking() {
+        let mut block = AudioBuffer::new(
+            SampleRate::HZ_48000,
+            ChannelLayout::Stereo,
+            1024,
+            Timestamp::ZERO,
+        )
+        .unwrap();
+        assert!(block.capacity_frames() >= 1024);
+        block.reshape(ChannelLayout::Stereo, 10).unwrap();
+        assert_eq!(block.frames(), 10);
+        assert!(
+            block.capacity_frames() >= 1024,
+            "shrinking keeps the allocation"
+        );
+        block.reshape(ChannelLayout::Mono, 10).unwrap();
+        assert!(
+            block.capacity_frames() >= 2048,
+            "fewer channels, more frames per channel"
+        );
     }
 }

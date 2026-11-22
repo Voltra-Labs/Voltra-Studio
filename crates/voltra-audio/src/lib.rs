@@ -65,6 +65,7 @@ mod gain;
 mod kernel;
 mod meter;
 mod mixer;
+mod resample;
 mod track;
 
 pub use ballistics::{Ballistics, BallisticsConfig, ChannelDisplay, MeterDisplay};
