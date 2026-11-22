@@ -166,6 +166,25 @@ impl Resampler {
     /// layout, [`Error::BlockTooLarge`] for more than `max_input_frames`, and
     /// [`Error::OutputTooSmall`]. On error nothing is consumed or written.
     pub fn process(&mut self, input: &AudioBuffer, output: &mut AudioBuffer) -> Result<usize> {
+        self.process_at(input, input.pts(), output)
+    }
+
+    /// [`process`](Self::process), taking the input block as starting at `pts`
+    /// instead of its own timestamp.
+    ///
+    /// For a caller that has already smoothed a jittery source's timestamps
+    /// and wants the resampler to see the corrected, continuous stream without
+    /// copying the block to restamp it.
+    ///
+    /// # Errors
+    ///
+    /// As [`process`](Self::process).
+    pub fn process_at(
+        &mut self,
+        input: &AudioBuffer,
+        pts: Timestamp,
+        output: &mut AudioBuffer,
+    ) -> Result<usize> {
         self.check(input, self.from)?;
         self.check(output, self.to)?;
         let frames = input.frames();
@@ -183,7 +202,7 @@ impl Resampler {
             });
         }
 
-        let start = self.continue_from(input.pts());
+        let start = self.continue_from(pts);
 
         // Append the block to every channel's window.
         let available = self.held + frames;

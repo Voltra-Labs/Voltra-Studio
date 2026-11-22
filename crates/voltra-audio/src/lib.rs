@@ -66,6 +66,7 @@ compile_error!("voltra-audio needs lock-free 32- and 64-bit atomics");
 mod ballistics;
 mod error;
 mod gain;
+mod input;
 mod kernel;
 mod meter;
 mod mixer;

@@ -302,3 +302,33 @@ fn latency_is_the_look_ahead() {
     assert_eq!(resampler.latency(), rate(44_100).duration_of(68));
     assert!(Resampler::new(rate(44_100), rate(48_000), ChannelLayout::Mono, 0).is_err());
 }
+
+#[test]
+fn process_at_uses_the_given_timestamp() {
+    let (from, to) = (rate(44_100), rate(48_000));
+    let mut resampler = Resampler::new(from, to, ChannelLayout::Mono, 1024).unwrap();
+    let mut output = AudioBuffer::new(
+        to,
+        ChannelLayout::Mono,
+        resampler.max_output_frames(1024),
+        Timestamp::ZERO,
+    )
+    .unwrap();
+    // The block claims a jittery time; the caller knows it continues at zero.
+    let jittery =
+        AudioBuffer::new(from, ChannelLayout::Mono, 1024, Timestamp::from_millis(3)).unwrap();
+    resampler
+        .process_at(&jittery, Timestamp::ZERO, &mut output)
+        .unwrap();
+    assert_eq!(output.pts(), Timestamp::ZERO);
+    let next =
+        AudioBuffer::new(from, ChannelLayout::Mono, 1024, Timestamp::from_millis(1)).unwrap();
+    resampler
+        .process_at(&next, from.pts(1024), &mut output)
+        .unwrap();
+    assert_eq!(
+        resampler.discontinuities(),
+        0,
+        "the given times are continuous"
+    );
+}
