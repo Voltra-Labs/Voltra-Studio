@@ -297,7 +297,7 @@ también extremo a extremo con dos hilos, y un `clippy.toml` que prohíbe los
 mutexes en la crate. La deriva de relojes pasó a la fase 5 y el reloj A/V a la
 fase 4 (`docs/ROADMAP.md`).
 
-**Fase 4 en curso.** El plan 016 dejó un muxer Matroska nativo en
+**Fase 4 cerrada.** El plan 016 dejó un muxer Matroska nativo en
 `voltra-output`, escrito en flujo (ADR 0005), y `voltra record`, que graba la
 escena con sonido con la sincronía A/V medida por FFmpeg en el propio fichero:
 una muestra, sin deriva. El plan 017 dejó `voltra-encode`: el trait
@@ -305,17 +305,23 @@ una muestra, sin deriva. El plan 017 dejó `voltra-encode`: el trait
 la feature `ffmpeg`, con la misma sincronía medida en el fichero comprimido. El
 plan 018 añadió `AudioEncoder` con AAC, el `Interleaver` de `voltra-output` y un
 origen común para todas las pistas: H.264 + AAC salen sincronizados a 0,35 ms,
-sin deriva, medidos con las marcas de presentación que ve un reproductor.
+sin deriva, medidos con las marcas de presentación que ve un reproductor. El
+plan 019 cumplió el criterio de salida: un asignador global que cuenta y
+`voltra record --report-every`, que informa de lo vivo mientras graba; una hora
+de H.264 + AAC a 29,97 fps sin deriva —el pitido de cada segundo a 354,2 µs del
+segundo, del primero al último— y sin asignaciones en régimen estable.
 
 ```bash
 voltra record -o demo.mkv --seconds 10
 voltra record -o - | ffplay -
 cargo run --release -p voltra-cli --features ffmpeg -- record -o demo.mkv --video h264 --audio aac
+voltra record -o /dev/null --seconds 600 --report-every 60   # memoria, cada minuto
 ```
 
 La feature `ffmpeg` necesita las cabeceras de desarrollo de FFmpeg y `libclang`
-(ver el trabajo `encode` de CI). Siguiente paso: el criterio de salida de la
-fase, minutos de grabación sin deriva ni crecimiento de memoria, medidos.
+(ver el trabajo `encode` de CI, fijado a Ubuntu 24.04 por su FFmpeg 6.1). La
+MSRV (1.85) la comprueba CI con `cargo +1.85`; la feature `gpu` necesita 1.87,
+la de `wgpu`. Siguiente: la fase 5, captura con PipeWire.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -338,4 +344,5 @@ Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
 Grabar a fichero: `docs/references/recording.md`.
 El encoder de vídeo: `docs/references/encoding.md`.
 El encoder de audio y el entrelazado: `docs/references/audio-encoding.md`.
+Medir una grabación larga: `docs/references/long-recording.md`.
 Fases del producto: `docs/ROADMAP.md`.

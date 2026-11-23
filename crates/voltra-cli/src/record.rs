@@ -24,6 +24,7 @@
 
 mod args;
 mod pipeline;
+mod report;
 mod scene;
 
 use std::time::Instant;
@@ -68,6 +69,17 @@ pub fn run(args: &Args) -> Result<()> {
         summary.audio_packets,
         summary.most_queued,
         started.elapsed().as_secs_f64()
+    );
+    let heap = crate::heap::stats();
+    // The resident size now, not `VmHWM`: Linux updates its high-water mark
+    // lazily, and it can read below a resident size reported earlier.
+    let resident = crate::heap::resident(&mut String::new()).map_or(0, |resident| resident.now_kib);
+    eprintln!(
+        "heap: {} KiB live in {} blocks, {} KiB at most; {} KiB resident",
+        heap.live_bytes / 1024,
+        heap.live_blocks,
+        heap.peak_bytes / 1024,
+        resident
     );
     Ok(())
 }

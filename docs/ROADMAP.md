@@ -73,7 +73,7 @@ reparte donde se puede medir.
   ("sin deriva A/V") es exactamente esa medida, y que trae el pipeline donde
   hacerla.
 
-**La fase 4 está en marcha.** El plan 016 dejó un muxer Matroska nativo que
+**La fase 4 está cerrada.** El plan 016 dejó un muxer Matroska nativo que
 escribe en flujo —válido en cada byte, así que un cuelgue deja una grabación
 reproducible— y `voltra record`, que graba la escena con un tono mezclado por el
 mezclador de la fase 3. FFmpeg lee el fichero, y la sincronía medida en él es de
@@ -83,8 +83,11 @@ validado en papel contra x264, NVENC, VAAPI y VideoToolbox: x264 por
 veinte veces menos espacio. El plan 018 añadió el **encoder AAC** y el
 **entrelazado**: `voltra record --video h264 --audio aac` graba un fichero
 comprimido en las dos pistas, con la sincronía medida en marcas reales a 0,35 ms
-y sin deriva. Lo que queda para cerrar la fase es su criterio de salida:
-**grabar minutos sin deriva ni crecimiento de memoria**, medido.
+y sin deriva. El plan 019 midió el criterio de salida: **una hora de H.264 +
+AAC a 29,97 fps** con el pitido de cada segundo a 354,2 µs de su segundo, del
+primero al último, y el heap de Rust sin asignar nada en régimen estable. La
+medida encontró un desfase constante de 1 ms en el encoder H.264, que contaba
+los fotogramas desde el cero y no desde el primero, y lo corrigió.
 
 Después: captura con PipeWire (fase 5), el momento en que el programa sirve para
 algo, streaming (fase 6) e interfaz (fase 7).
@@ -116,19 +119,27 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   comprimida con la misma sincronía medida (plan 017, hecho).
 - Encoder de audio AAC y entrelazado de encoders con retardo, con un origen
   común para todas las pistas (plan 018, hecho).
-- Fotogramas B (el muxer ordenando por tiempo de decodificación).
-- El vídeo anclado al reloj de audio (venido de la fase 3).
+- Memoria contada por el asignador y sincronía medida en cada segundo de una
+  grabación larga: una hora, sin deriva ni crecimiento (plan 019, hecho).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni
-  crecimiento de memoria.
+  crecimiento de memoria. **Cumplido** (plan 019).
+
+Salen de la fase, con su razón (plan 019): **el vídeo anclado al reloj de
+audio** va a la fase 5, porque con una escena sintética los dos relojes son el
+mismo contador de muestras y no hay nada que anclar; **los fotogramas B** van a
+la fase 6, donde el bitrate más importa.
 
 ## Fase 5 — Captura de plataforma
 - Pantalla, ventana, cámara y audio del sistema en la plataforma prioritaria.
 - Corrección de la deriva entre relojes de dispositivos, con remuestreo de razón
   variable (venida de la fase 3).
+- El vídeo capturado anclado al reloj de audio (venido de la fase 4).
 - **Criterio de salida:** captura a 60 fps con frames perdidos medidos y
   acotados.
 
 ## Fase 6 — Streaming
+- Fotogramas B: el muxer ordenando por tiempo de decodificación (venidos de la
+  fase 4).
 - Transporte en vivo (RTMP/SRT/WHIP), gestión de red, reconexión y bitrate
   adaptativo.
 

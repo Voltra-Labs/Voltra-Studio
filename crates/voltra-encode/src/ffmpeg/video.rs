@@ -36,6 +36,9 @@ pub struct FfmpegVideoEncoder {
     context: Context,
     info: EncoderInfo,
     headers: Option<Vec<u8>>,
+    /// The first frame's time: frame indices count from it, so a stream that
+    /// starts off the frame grid of time zero keeps its own times exactly.
+    start: Option<Timestamp>,
     flushed: bool,
 }
 
@@ -84,6 +87,7 @@ impl FfmpegVideoEncoder {
                 settings,
             },
             headers,
+            start: None,
             flushed: false,
         })
     }
@@ -112,7 +116,8 @@ impl VideoEncoder for FfmpegVideoEncoder {
                 source.size()
             )));
         }
-        let index = frame_index(settings.fps, source.pts());
+        let start = *self.start.get_or_insert(source.pts());
+        let index = frame_index(settings.fps, since(start, source.pts()));
         let frame = self.frame.0.as_ptr();
         // SAFETY: the frame is valid; `av_frame_make_writable` gives us its
         // buffers, and every row copied fits within `linesize` and the plane's
@@ -137,7 +142,7 @@ impl VideoEncoder for FfmpegVideoEncoder {
             &self.context,
             &self.packet,
             frame,
-            |t| frame_time(fps, t),
+            |t| frame_time(fps, start, t),
             sink,
         )
     }
@@ -148,11 +153,12 @@ impl VideoEncoder for FfmpegVideoEncoder {
         }
         self.flushed = true;
         let fps = self.info.settings.fps;
+        let start = self.start.unwrap_or(Timestamp::ZERO);
         send_and_drain(
             &self.context,
             &self.packet,
             ptr::null(),
-            |t| frame_time(fps, t),
+            |t| frame_time(fps, start, t),
             sink,
         )
     }
@@ -236,17 +242,26 @@ fn validate(settings: &VideoSettings) -> Result<()> {
     Ok(())
 }
 
-/// The frame index a timestamp falls on, rounded to the nearest frame.
+/// How long after `start` a frame is; a frame stamped before the first one is
+/// taken as at it.
+fn since(start: Timestamp, pts: Timestamp) -> Timestamp {
+    Timestamp::from_nanos(pts.as_nanos().saturating_sub(start.as_nanos()))
+}
+
+/// The frame index a time since the first frame falls on, rounded to the
+/// nearest frame.
 fn frame_index(fps: Fps, pts: Timestamp) -> u64 {
     let scaled = u128::from(pts.as_nanos()) * u128::from(fps.num());
     let per = u128::from(fps.den()) * 1_000_000_000;
     u64::try_from((scaled + per / 2) / per).unwrap_or(u64::MAX)
 }
 
-/// A packet time in frames back to a timestamp. Negative decode times, which
-/// only B-frames produce, clamp to zero.
-fn frame_time(fps: Fps, frames: i64) -> Timestamp {
-    fps.pts(u64::try_from(frames).unwrap_or(0))
+/// A packet time in frames since the first frame back to a timestamp.
+/// Negative decode times, which only B-frames produce, clamp to the first
+/// frame.
+fn frame_time(fps: Fps, start: Timestamp, frames: i64) -> Timestamp {
+    let offset = fps.pts(u64::try_from(frames).unwrap_or(0));
+    Timestamp::from_nanos(start.as_nanos().saturating_add(offset.as_nanos()))
 }
 
 #[cfg(test)]

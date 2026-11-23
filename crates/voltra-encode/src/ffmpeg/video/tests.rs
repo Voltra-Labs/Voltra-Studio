@@ -209,3 +209,32 @@ fn timestamps_survive_a_stream_that_does_not_start_at_zero() {
     let expected: Vec<_> = (0..10).map(|n| Fps::FPS_30.pts(start + n)).collect();
     assert_eq!(times, expected);
 }
+
+#[test]
+fn a_stream_off_the_frame_grid_keeps_its_own_times() {
+    // 29.97 fps from one second in: a second is 29.97 frames, so the start is
+    // not a whole frame of a grid anchored at zero. Counting frames from zero
+    // moved every packet a millisecond; counted from the first frame, each
+    // packet keeps its frame's time exactly.
+    let ntsc = Fps::new(30_000, 1_001).unwrap();
+    let mut settings = settings();
+    settings.fps = ntsc;
+    let mut encoder = FfmpegVideoEncoder::h264(settings).unwrap();
+    let start = Timestamp::from_millis(1_000);
+    let at = |n: u64| Timestamp::from_nanos(start.as_nanos() + ntsc.pts(n).as_nanos());
+    let mut times = Vec::new();
+    let mut sink = |packet: EncodedPacket<'_>| -> Result<()> {
+        times.push(packet.pts);
+        Ok(())
+    };
+    for n in 0..10 {
+        let mut input = frame(n);
+        input.set_pts(at(n));
+        encoder
+            .encode(EncoderInput::Frame(&input), &mut sink)
+            .unwrap();
+    }
+    encoder.flush(&mut sink).unwrap();
+    let expected: Vec<_> = (0..10).map(at).collect();
+    assert_eq!(times, expected);
+}
