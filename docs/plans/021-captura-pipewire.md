@@ -1,0 +1,147 @@
+# 021 — Captura de vídeo por PipeWire
+
+- **Fase:** 5
+- **Estado:** en curso (2026-11-23). Se ejecuta sin esperar a que se revise el
+  plan, porque el responsable lo ha pedido expresamente ("no me preguntes,
+  dale").
+
+## Objetivo
+
+`PipeWireCapture`, tras la feature `pipewire` de `voltra-capture`, recibe
+fotogramas de un nodo de vídeo de PipeWire en su propio hilo y los publica en
+la entrega del plan 020: una `CaptureSource` más. Un test arranca un PipeWire
+sin pantalla con una fuente de 60 fps y mide lo que llega, lo que se descarta
+en cada eslabón y con qué marca de tiempo.
+
+## Fuera de alcance
+
+- **El portal** `ScreenCast` (CreateSession, SelectSources, Start,
+  OpenPipeWireRemote): necesita un escritorio y D-Bus, y su crate pide Rust 1.89.
+  Este plan conecta a un nodo por su id o se deja enlazar.
+- **DMA-BUF**: importar sin copia a la GPU necesita el backend `wgpu` y una GPU.
+  Aquí solo memoria compartida, con la copia que eso implica.
+- Formatos de 10 bits y YUV; el cursor como metadato; el recorte (`VideoCrop`).
+- Grabar la captura en tiempo real con `voltra record`: necesita un bucle de
+  render a ritmo de reloj, que es otro paso.
+
+## Referencia
+
+`docs/references/capture.md` §2, lo que hace OBS en `plugins/linux-pipewire`:
+
+- Un bucle de PipeWire propio, y un `pw_stream` de entrada con
+  `AUTOCONNECT | MAP_BUFFERS`.
+- Ofrece `BGRA`, `RGBA`, `BGRx` y `RGBx`.
+- En cada `process` vacía la cola y se queda con el último búfer.
+- Descarta los búferes marcados `CORRUPTED`.
+- No usa la marca de tiempo de PipeWire ni cuenta descartes.
+
+Y el [tutorial 5 de PipeWire](https://docs.pipewire.org/page_tutorial5.html),
+del que sale el ejemplo `streams.rs` de `pipewire-rs`. La dependencia se decide
+en el ADR 0007.
+
+**Qué adoptamos:**
+
+- El bucle propio y los mismos cuatro formatos de 8 bits.
+- Vaciar hasta el último búfer.
+- Saltar los búferes corruptos y los vacíos.
+
+**Qué mejoramos:**
+
+- **Lo que se vacía se cuenta**: es un descarte en la fuente, antes de llegar
+  a nosotros.
+- **La marca de tiempo del fotograma** (`spa_meta_header.pts`), llevada al
+  reloj monótono del proceso, en vez de la hora de llegada.
+- **La copia** del búfer compartido a nuestro fotograma es la única, y va fila
+  a fila respetando el `stride` de PipeWire.
+
+## Diseño
+
+### `PipeWireCapture`
+
+```rust
+pub struct PipeWireTarget { pub node: Option<u32>, pub autoconnect: bool, pub name: String }
+
+impl PipeWireCapture {
+    pub fn start(target: PipeWireTarget) -> Result<CaptureSource>;
+}
+```
+
+- **Hilo:** el backend crea un hilo que inicializa PipeWire, crea su
+  `MainLoop`, `Context`, `Core` y el `Stream`, y ejecuta el bucle. `stop` envía
+  un mensaje por un `pipewire::channel` adjunto al bucle, que lo para; después
+  se espera al hilo.
+- **Negociación:** `EnumFormat` con vídeo crudo `BGRx`, `BGRA`, `RGBx` y
+  `RGBA`, tamaño de 1×1 a 8192×8192 y cualquier ritmo. En `param_changed` con
+  el formato elegido se guardan el formato y el tamaño.
+- **`process`:**
+  1. Se vacía la cola hasta el último búfer; los anteriores se devuelven y se
+     cuentan como `source_dropped`.
+  2. Se salta el búfer si su cabecera o su `chunk` dicen `CORRUPTED`, o si
+     viene vacío.
+  3. Se copian las filas a un fotograma `Bgra8` de `frame_mut`. `BGRx` y `BGRA`
+     van tal cual, con el alfa a 255 en `x`. `RGBx` y `RGBA` intercambian rojo y
+     azul.
+  4. Se publica con su marca de tiempo.
+- **Marca de tiempo:** si el búfer trae `spa_meta_header`, su `pts` está en
+  `CLOCK_MONOTONIC`. Se lleva al reloj del proceso (un `Instant` de
+  referencia) con la diferencia entre `pw_time.now` y un `Instant::now()`
+  tomados juntos. Si no la trae, cuenta la hora de llegada.
+- **Estado:** `Starting` hasta el primer fotograma, `Running`, y `Failed` si el
+  flujo pasa a error o se desconecta; el motivo va al log.
+- **Contadores propios:** además de los de la entrega, `source_dropped` y
+  `skipped` (corruptos o vacíos).
+
+### Tests, tras la feature
+
+`tests/pipewire.rs` levanta lo que necesita, o se salta y lo dice si faltan
+`pipewire`, `gst-launch-1.0` o `pw-link`:
+
+1. **El servidor:** un `pipewire` con `XDG_RUNTIME_DIR` en un directorio corto
+   y propio (la ruta del socket no puede pasar de 108 bytes).
+2. **El productor:** una fuente de GStreamer, `videotestsrc is-live=true`, en
+   `BGRx` a 320×180 y 60 fps, por `pipewiresink`.
+3. **La conexión:** el backend con `autoconnect: false`, y los puertos
+   enlazados con `pw-link`.
+
+Durante 2 s se comprueba:
+
+- llegan 120 ± 10 fotogramas, con el tamaño y el formato del productor;
+- la invariante de la entrega se cumple;
+- las marcas de tiempo avanzan alrededor de 16,7 ms entre fotogramas;
+- al parar, el estado pasa a `Stopped`.
+
+### CI
+
+El trabajo `capture` instala `libpipewire-0.3-dev`, `clang`, `pipewire` y
+`gstreamer1.0-pipewire`, más los plugins base y las herramientas de GStreamer,
+y ejecuta clippy y los tests de `voltra-capture` con `--features pipewire`.
+
+## Pasos
+
+1. **Documentos**: este plan y el ADR 0007.
+2. **El backend** tras la feature, con sus tests unitarios (la conversión de
+   formatos, el mapeo de la marca de tiempo).
+3. **El test de extremo a extremo** con PipeWire, el trabajo de CI y los
+   documentos con las cifras.
+
+## Verificación
+
+- La conversión de cada formato da los bytes BGRA esperados, con `stride`
+  mayor que el ancho.
+- El mapeo de la marca de tiempo es exacto con relojes de prueba y reancla si
+  la marca salta más de 2 s.
+- De extremo a extremo, las cifras anteriores, en este contenedor y en CI.
+- La build por defecto no cambia: sin la feature no se compila nada de
+  PipeWire.
+
+**Rendimiento:** el coste de copiar y convertir un fotograma 1080p desde
+memoria compartida, anotado; es la deuda que DMA-BUF quitará.
+
+## Riesgos
+
+- **`pipewire-rs` y sus `bindgen`**: compilan aquí (comprobado), y CI instala
+  las mismas cabeceras.
+- **Un PipeWire en CI** puede no arrancar en el runner. Entonces el test se
+  salta y lo dice, y la causa se anota; la build y clippy siguen comprobándose.
+- **Enlazar con `pw-link`** es cosa del test. En un escritorio enlaza el gestor
+  de sesión, o el portal entrega el nodo ya en su propio *remote*.
