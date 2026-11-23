@@ -1,9 +1,9 @@
 # 021 — Captura de vídeo por PipeWire
 
 - **Fase:** 5
-- **Estado:** en curso (2026-11-23). Se ejecuta sin esperar a que se revise el
-  plan, porque el responsable lo ha pedido expresamente ("no me preguntes,
-  dale").
+- **Estado:** completado (2026-11-23) — ver Resultado. Se ejecutó sin esperar
+  a que se revisara el plan, porque el responsable lo pidió expresamente ("no
+  me preguntes, dale").
 
 ## Objetivo
 
@@ -145,3 +145,51 @@ memoria compartida, anotado; es la deuda que DMA-BUF quitará.
   salta y lo dice, y la causa se anota; la build y clippy siguen comprobándose.
 - **Enlazar con `pw-link`** es cosa del test. En un escritorio enlaza el gestor
   de sesión, o el portal entrega el nodo ya en su propio *remote*.
+
+## Resultado
+
+Puerta de calidad en verde: **357 tests** por defecto (desde 353) y el de
+extremo a extremo con `--features pipewire`; clippy limpio con Rust 1.97 y
+1.100, con y sin la feature; `cargo +1.85 check` y `cargo deny` bien. Tres
+commits: documentos; el backend; el test de extremo a extremo, el trabajo de CI
+y estos documentos.
+
+**Funcionó a la primera contra un PipeWire de verdad.** Una fuente de GStreamer
+a 60 fps, 2 s, cinco ejecuciones:
+
+| Medida | Resultado |
+|---|---|
+| Capturados | 122 |
+| Enseñados / descartados en la entrega | 118–120 / 1–3 |
+| Descartados en la cola de PipeWire / saltados | 0 / 0 |
+| Separación de las marcas del productor | 16,67 ms, 60 fps exactos, cuando no se descarta ninguno |
+| Anclajes del reloj | 1 |
+| Copiar 1080p a BGRA, según el formato | 561 µs (`BGRA`), 732 µs (`BGRx`), 1,32 ms (`RGBx`) |
+
+## Desviaciones respecto al plan
+
+- **`PipeWireTarget::remote`**, que el diseño no traía: la ruta absoluta del
+  socket del servidor. Así el test conecta a su propio servidor sin tocar las
+  variables de entorno del proceso, que en la edición 2024 es `unsafe`.
+- **La conversión es pública** (`copy_to_bgra`, `SourceFormat`): la necesitarán
+  los demás backends, y así tiene benchmark.
+- **`Capture::backend_stats`**, con `source_dropped`, `skipped` y
+  `clock_anchors`: lo que el backend cuenta antes de la entrega, visible desde
+  la fuente.
+- **Ni WirePlumber ni D-Bus en el test**: un `pipewire` solo basta cuando los
+  puertos se enlazan con `pw-link`. Con WirePlumber, además, el enlace
+  automático no funciona con una fuente de GStreamer ("target not found",
+  aunque la registra como fuente de vídeo por defecto); con un portal, el nodo
+  llega ya preparado.
+- **En la PR del plan 020, el trabajo de la GPU (lavapipe) cayó con un
+  SIGSEGV** en los tests de paridad, que esa PR no tocaba. Pasó al
+  relanzarlo, y aquí pasa ocho de ocho. Queda anotado: si se repite, se
+  investiga en serio, que un fallo de segmento no es ruido.
+
+## Pasos futuros anotados
+
+- El portal `ScreenCast` (`ashpd`, tras su propia feature), con el
+  `restore_token` guardado como OBS.
+- DMA-BUF a la GPU (`PERFORMANCE.md` §3.7).
+- Un bucle de render a ritmo de reloj, para grabar una captura con
+  `voltra record`.

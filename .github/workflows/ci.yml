@@ -105,6 +105,36 @@ jobs:
       - name: Recording tests
         run: cargo test -p voltra-cli --features ffmpeg
 
+  capture:
+    name: Capture (PipeWire)
+    # Pinned, as the encode job: PipeWire 1.0 is what the tests were measured
+    # against.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The `pipewire` feature binds libpipewire's headers (bindgen needs
+      # libclang). The tests bring up their own server — no session manager,
+      # no D-Bus, no display — with a GStreamer test source as the producer.
+      - name: Install PipeWire and a test source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpipewire-0.3-dev pkg-config clang libclang-dev pipewire \
+            gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-tools
+
+      - name: Lints
+        run: cargo clippy -p voltra-capture --all-targets --features pipewire -- -D warnings
+
+      - name: Capture tests
+        run: cargo test -p voltra-capture --features pipewire
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest

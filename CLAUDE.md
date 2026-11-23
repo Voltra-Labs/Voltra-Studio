@@ -329,9 +329,14 @@ por un triple búfer sin espera donde el último gana (ADR 0006), con capturados
 enseñados, descartados y repetidos contados y la invariante entre ellos
 comprobada; `CaptureSource`, una fuente de escena más; y una captura de prueba
 en su hilo que lo ejercita sin dispositivos. Publicar y tomar un fotograma
-cuesta 26 ns a 1080p. Siguiente: el backend PipeWire (plan 021). Un PipeWire
-sin pantalla con una fuente de GStreamer funciona en el contenedor, enlazando
-los puertos a mano: así se probará.
+cuesta 26 ns a 1080p. El plan 021 añadió `PipeWireCapture`, tras la feature
+`pipewire` (ADR 0007): su propio bucle de PipeWire en su hilo, vaciado hasta el
+último búfer como OBS, la marca de tiempo del productor llevada al reloj del
+proceso y cada pérdida contada. Contra una fuente de 60 fps llegan 122
+fotogramas en 2 s con sus marcas a 16,67 ms. El test levanta su propio
+`pipewire` sin pantalla ni D-Bus y enlaza con `pw-link`; CI lo hace en el
+trabajo `capture`. Siguiente: el portal `ScreenCast`, y un bucle de render a
+ritmo de reloj para grabar una captura.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -343,6 +348,7 @@ Decisiones ya tomadas (ver `docs/adr/`):
 | 0004 | Interfaz: `egui`/`eframe`. |
 | 0005 | Grabación: Matroska nativo, escrito en flujo; MP4 después, por remuxeo. |
 | 0006 | Captura: el último fotograma gana, por triple búfer, con cada descarte contado. |
+| 0007 | PipeWire por `pipewire-rs`, tras la feature `pipewire`. |
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.

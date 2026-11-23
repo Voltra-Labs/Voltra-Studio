@@ -275,6 +275,23 @@ su búfer y se intercambian índices. Con la captura de prueba a 60 fps durante
 | 60 → 60 fps | 120–121 | 119 | 0–1 | 0 |
 | 60 → 30 fps | 120–121 | 59 | 60–61 | 0 |
 
+La captura por PipeWire (plan 021), de memoria compartida a un fotograma BGRA,
+en el hilo de captura:
+
+| Operación | Coste | % del presupuesto | Plan |
+|---|---|---|---|
+| Copiar 1080p desde `BGRA` | 561 µs | 3,4 % | 021 |
+| Copiar 1080p desde `BGRx` (alfa a 255) | 732 µs | 4,4 % | 021 |
+| Copiar 1080p desde `RGBx` (rojo y azul cambiados) | 1,32 ms | 8,0 % | 021 |
+
+Es la copia que la memoria compartida no puede evitar, y la que DMA-BUF quitará
+(§3.7). De extremo a extremo, una fuente de GStreamer a 60 fps por un PipeWire
+sin pantalla, 2 s, cinco ejecuciones (`tests/pipewire.rs`):
+
+| Capturados | Enseñados | Descartados | Descartados en PipeWire | Saltados | Separación de las marcas |
+|---|---|---|---|---|---|
+| 122 | 118–120 | 1–3 | 0 | 0 | 16,67 ms (60 fps exactos) cuando no se descarta ninguno |
+
 ---
 
 ## 3. Deuda abierta
@@ -389,6 +406,17 @@ cargo run --release -p voltra-cli --features gpu -- \
 El resumen avisa por stderr cuando el adaptador es software, para que nadie
 copie aquí un número que no lo es. La primera composición incluye la compilación
 de los pipelines, así que se mide a partir de la segunda.
+
+### 3.7 La captura por memoria compartida copia cada fotograma — ABIERTA
+
+**Síntoma.** Copiar un fotograma 1080p de PipeWire a BGRA cuesta de 561 µs a
+1,32 ms en el hilo de captura (plan 021). No es el hilo de render, pero es un
+núcleo ocupado el 3–8 % del tiempo por fuente.
+
+**Plan.** DMA-BUF: importar el búfer como textura de la GPU sin pasar por la
+CPU, como OBS (`docs/references/capture.md` §2). Necesita el backend `wgpu` y
+una GPU, como la medida de la fase 2. Mientras tanto, la conversión de `RGBx`
+—el doble que `BGRx`— es la candidata a mirar, con un perfil antes.
 
 ### 3.5 Escribir Y4M cuesta el 23 % del presupuesto, y es disco
 
