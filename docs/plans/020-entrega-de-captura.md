@@ -1,9 +1,9 @@
 # 020 — De la captura al compositor: `voltra-capture` y su entrega
 
 - **Fase:** 5
-- **Estado:** en curso (2026-11-23). Se ejecuta sin esperar a que se revise el
-  plan, porque el responsable lo ha pedido expresamente ("no me preguntes,
-  dale").
+- **Estado:** completado (2026-11-23) — ver Resultado. Se ejecutó sin esperar
+  a que se revisara el plan, porque el responsable lo pidió expresamente ("no
+  me preguntes, dale").
 
 ## Objetivo
 
@@ -132,3 +132,38 @@ tamaño: no hay copia) y de escribir el patrón, anotados en `PERFORMANCE.md`.
 - **El modelo del último gana no sirve para todo**, como un vídeo de un fichero
   que hay que reproducir entero. No es captura, y tendrá otra entrega cuando
   exista.
+
+## Resultado
+
+Puerta de calidad en verde: **353 tests** por defecto (desde 340), clippy limpio
+con Rust 1.97 y 1.100, `cargo +1.85 check` y `cargo deny` bien. Tres commits:
+documentos; la crate con la entrega; `CaptureSource` y la captura de prueba.
+
+| Medida | Resultado |
+|---|---|
+| Publicar y tomar un fotograma | 24 ns a 64×36, 26 ns a 1080p: no hay copia |
+| Asignaciones al escribir, publicar y tomar 100 fotogramas 1080p | 0 |
+| Captura a 60 fps, render a 60 fps, 2 s | 120 capturados, 119 enseñados, 0–1 descartados |
+| Captura a 60 fps, render a 30 fps, 2 s | la mitad exacta descartada (60 de 120) |
+| Dos hilos, 20 000 fotogramas | ninguno vuelve atrás; capturados = enseñados + descartados |
+
+## Desviaciones respecto al plan
+
+- **El coste de pintar el patrón no se midió.** El plan lo pedía, pero la
+  función es privada y no forma parte de ningún camino real: solo simula a un
+  backend. El número que importa es el de la entrega.
+- **`Capture::stop`**, que el diseño no mencionaba: el que usa la fuente
+  necesita parar el backend y esperar a su hilo antes de leer las cifras
+  definitivas, y no solo al soltarlo.
+- **Un cambio de tamaño cuesta tres reservas, no una**: cada uno de los tres
+  búferes se reserva de nuevo la primera vez que vuelve al productor. El
+  contador se llama `reallocated` y lo dice.
+- **Antes del primer fotograma, un tick sin nada no cuenta como repetición**:
+  no hay nada que repetir.
+
+## Pasos futuros anotados
+
+- El backend PipeWire (plan 021), con la hora de cada fotograma llevada al reloj
+  del motor.
+- El ritmo con búfer para cámaras que fluctúan, si alguna lo necesita: otra
+  entrega detrás de la misma fuente.

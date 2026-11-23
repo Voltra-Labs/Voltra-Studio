@@ -22,5 +22,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod delivery;
+mod source;
+mod test_pattern;
 
 pub use delivery::{CaptureStats, FrameReader, FrameWriter, frame_channel};
+pub use source::{Capture, CaptureSource, CaptureStatus};
+pub use test_pattern::TestPatternCapture;

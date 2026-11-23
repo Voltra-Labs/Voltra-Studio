@@ -259,6 +259,22 @@ los anteriores. Están acotados por el tamaño máximo de paquete; el residente,
 por lo que reservan x264 y FFmpeg a su manera. El contador no cuesta nada que se
 pueda medir porque, en régimen estable, el pipeline no asigna.
 
+La entrega de la captura al compositor (plan 020, ADR 0006):
+
+| Operación | Coste | % del presupuesto | Plan |
+|---|---|---|---|
+| Publicar un fotograma y tomarlo (triple búfer), 64×36 | 24 ns | 0,000 1 % | 020 |
+| Lo mismo, 1080p BGRA | 26 ns | 0,000 2 % | 020 |
+
+No depende del tamaño porque no se mueve ni un píxel: el productor escribe en
+su búfer y se intercambian índices. Con la captura de prueba a 60 fps durante
+2 s, en tres ejecuciones (`tests/pacing.rs`):
+
+| Captura → render | Capturados | Enseñados | Descartados | Repetidos |
+|---|---|---|---|---|
+| 60 → 60 fps | 120–121 | 119 | 0–1 | 0 |
+| 60 → 30 fps | 120–121 | 59 | 60–61 | 0 |
+
 ---
 
 ## 3. Deuda abierta

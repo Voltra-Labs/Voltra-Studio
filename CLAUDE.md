@@ -274,8 +274,8 @@ voltra render -o - --frames 300 | ffplay -
 cargo run --release -p voltra-cli --features gpu -- render -o demo.y4m --gpu
 ```
 
-Crates vivas: `voltra-core`, `voltra-audio`, `voltra-render`, `voltra-sources`,
-`voltra-encode`, `voltra-output` y `voltra-cli`; las demás se crearán cuando
+Crates vivas: `voltra-core`, `voltra-audio`, `voltra-capture`, `voltra-render`,
+`voltra-sources`, `voltra-encode`, `voltra-output` y `voltra-cli`; las demás se crearán cuando
 haya código que meter en ellas.
 
 **La fase 2 no se cierra por falta de una medición, no de código.** Su criterio
@@ -321,7 +321,17 @@ voltra record -o /dev/null --seconds 600 --report-every 60   # memoria, cada min
 La feature `ffmpeg` necesita las cabeceras de desarrollo de FFmpeg y `libclang`
 (ver el trabajo `encode` de CI, fijado a Ubuntu 24.04 por su FFmpeg 6.1). La
 MSRV (1.85) la comprueba CI con `cargo +1.85`; la feature `gpu` necesita 1.87,
-la de `wgpu`. Siguiente: la fase 5, captura con PipeWire.
+la de `wgpu`.
+
+**Fase 5 en curso.** El plan 020 creó `voltra-capture` con lo que comparten
+todos los backends: la entrega de fotogramas del hilo de captura al de render
+por un triple búfer sin espera donde el último gana (ADR 0006), con capturados,
+enseñados, descartados y repetidos contados y la invariante entre ellos
+comprobada; `CaptureSource`, una fuente de escena más; y una captura de prueba
+en su hilo que lo ejercita sin dispositivos. Publicar y tomar un fotograma
+cuesta 26 ns a 1080p. Siguiente: el backend PipeWire (plan 021). Un PipeWire
+sin pantalla con una fuente de GStreamer funciona en el contenedor, enlazando
+los puertos a mano: así se probará.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -332,6 +342,7 @@ Decisiones ya tomadas (ver `docs/adr/`):
 | 0003 | Encoding: hardware primero y sin copia a CPU; software solo como respaldo. |
 | 0004 | Interfaz: `egui`/`eframe`. |
 | 0005 | Grabación: Matroska nativo, escrito en flujo; MP4 después, por remuxeo. |
+| 0006 | Captura: el último fotograma gana, por triple búfer, con cada descarte contado. |
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
@@ -345,4 +356,5 @@ Grabar a fichero: `docs/references/recording.md`.
 El encoder de vídeo: `docs/references/encoding.md`.
 El encoder de audio y el entrelazado: `docs/references/audio-encoding.md`.
 Medir una grabación larga: `docs/references/long-recording.md`.
+De la captura al compositor: `docs/references/capture.md`.
 Fases del producto: `docs/ROADMAP.md`.
