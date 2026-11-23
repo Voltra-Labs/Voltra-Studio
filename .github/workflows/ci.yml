@@ -71,7 +71,10 @@ jobs:
 
   encode:
     name: Encoders (FFmpeg)
-    runs-on: ubuntu-latest
+    # Pinned: `ffmpeg-sys-next` 6.1 binds FFmpeg 6.1's headers, which is what
+    # Ubuntu 24.04 ships. Newer images ship an FFmpeg without `avfft.h`, and
+    # moving to it is a dependency upgrade of its own, not a CI change.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -120,7 +123,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo check --workspace --all-targets
+      # `+version` explicitly: `rust-toolchain.toml` would otherwise override
+      # the toolchain installed above with stable, and the job would check
+      # nothing. Default features only; `gpu` needs what `wgpu` needs (1.87).
+      - run: cargo +${{ steps.msrv.outputs.version }} check --workspace --all-targets
 
   deny:
     name: Licences and advisories

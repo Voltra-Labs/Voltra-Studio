@@ -33,7 +33,7 @@ fn encode(total: usize, size: usize) -> (FfmpegAudioEncoder, Vec<Timestamp>) {
     let mut times = Vec::new();
     let mut sink = |packet: EncodedPacket<'_>| -> Result<()> {
         assert!(packet.keyframe, "every AAC packet decodes on its own");
-        assert!(!packet.data.is_empty());
+        assert_ne!(packet.data, []);
         times.push(packet.pts);
         Ok(())
     };

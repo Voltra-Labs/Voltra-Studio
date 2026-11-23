@@ -29,6 +29,18 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.9
+# Voltra's own crates carry Voltra's licence. Allowing GPL-2.0-or-later for
+# them by name, rather than in `allow`, keeps a copyleft dependency an explicit
+# decision.
+exceptions = [
+    { crate = "voltra-audio", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-cli", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-core", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-encode", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-output", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-render", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-sources", allow = ["GPL-2.0-or-later"] },
+]
 
 [bans]
 # Duplicate versions bloat the binary and slow compiles; visible, not fatal.

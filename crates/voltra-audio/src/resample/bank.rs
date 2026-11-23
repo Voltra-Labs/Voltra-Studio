@@ -219,7 +219,7 @@ mod tests {
                 |best, (i, &c)| if c > best.1 { (i, c) } else { best },
             );
         assert_eq!(peak, bank.center());
-        assert!(bank.phase(bank.up()).is_empty());
+        assert_eq!(bank.phase(bank.up()), []);
     }
 
     #[test]

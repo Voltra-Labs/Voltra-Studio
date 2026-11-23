@@ -54,13 +54,20 @@ impl LevelCell {
         if let Some(true_peak) = true_peak {
             raise(&self.true_peak, true_peak);
         }
-        // The closure always returns `Some`, so this cannot fail.
-        let _ = self
-            .power
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
-                let (old_energy, old_frames) = unpack(old);
-                Some(pack(old_energy + energy, old_frames.saturating_add(frames)))
-            });
+        // A compare-and-swap loop rather than `fetch_update`, which newer
+        // toolchains deprecate in favour of a `try_update` the MSRV lacks.
+        let mut old = self.power.load(Ordering::Relaxed);
+        loop {
+            let (old_energy, old_frames) = unpack(old);
+            let new = pack(old_energy + energy, old_frames.saturating_add(frames));
+            match self
+                .power
+                .compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed)
+            {
+                Ok(_) => break,
+                Err(current) => old = current,
+            }
+        }
     }
 
     fn take(&self) -> Taken {

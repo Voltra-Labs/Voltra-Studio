@@ -103,8 +103,7 @@ impl InputWriter {
             Some((resampler, scratch)) => {
                 // The scratch block is sized for this; anything else is a bug
                 // in this crate, and the block is dropped rather than panic.
-                if let Ok(produced) = resampler.process_at(block, pts, scratch)
-                    && produced > 0
+                if matches!(resampler.process_at(block, pts, scratch), Ok(produced) if produced > 0)
                 {
                     let at = scratch.pts();
                     self.placer.place(scratch, at);
