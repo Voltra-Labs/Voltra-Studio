@@ -345,7 +345,7 @@ mod tests {
         for (layout, channels) in expected {
             assert_eq!(layout.channels(), channels, "{layout}");
             assert!(layout.channels() <= MAX_CHANNELS);
-            assert!(!layout.name().is_empty());
+            assert_ne!(layout.name(), "");
         }
     }
 

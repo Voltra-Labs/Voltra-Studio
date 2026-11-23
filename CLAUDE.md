@@ -274,19 +274,48 @@ voltra render -o - --frames 300 | ffplay -
 cargo run --release -p voltra-cli --features gpu -- render -o demo.y4m --gpu
 ```
 
-Crates vivas: `voltra-core`, `voltra-render`, `voltra-sources`, `voltra-output`
-y `voltra-cli`; las demás se crearán cuando haya código que meter en ellas.
+Crates vivas: `voltra-core`, `voltra-audio`, `voltra-render`, `voltra-sources`,
+`voltra-encode`, `voltra-output` y `voltra-cli`; las demás se crearán cuando
+haya código que meter en ellas.
 
 **La fase 2 no se cierra por falta de una medición, no de código.** Su criterio
 de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
 (§3.4) y el backend GPU ya existe y es correcto, pero solo se ha verificado
 sobre un rasterizador software: **no hay ninguna cifra de GPU**
 (`docs/PERFORMANCE.md` §3.6). Hace falta una máquina con GPU, no otro plan.
-**Fase 3 arrancada.** El plan 011 dejó el vocabulario de audio en `voltra-core`:
-`SampleRate` con aritmética exacta, `ChannelLayout`, los formatos de borde y
-`AudioBuffer` —float de 32 bits planar, una sola asignación—. Siguiente paso: el
-mezclador, que es el criterio de salida de la fase. Secuencia en
-`docs/ROADMAP.md`.
+
+**Fase 3 cerrada.** El plan 011 dejó el vocabulario de audio en `voltra-core`
+(`SampleRate` exacta, `ChannelLayout`, formatos de borde, `AudioBuffer` float
+planar). En `voltra-audio`: el mezclador (plan 012) con volumen, balance/paneo y
+silencio en rampa, control por atómicos y aislamiento de fallos por pista; los
+medidores (plan 013), pico, pico verdadero BS.1770 y RMS sin perder picos, con
+la balística de OBS; el remuestreo (plan 014), polifase de razón exacta con
+aliasing a −124 dB; y la entrada de audio por fuente (plan 015), que alisa,
+remuestrea y coloca por marca de tiempo en un anillo SPSC sin `unsafe`. Nada del
+camino del audio asigna ni bloquea: lo vigilan un test con asignador contador,
+también extremo a extremo con dos hilos, y un `clippy.toml` que prohíbe los
+mutexes en la crate. La deriva de relojes pasó a la fase 5 y el reloj A/V a la
+fase 4 (`docs/ROADMAP.md`).
+
+**Fase 4 en curso.** El plan 016 dejó un muxer Matroska nativo en
+`voltra-output`, escrito en flujo (ADR 0005), y `voltra record`, que graba la
+escena con sonido con la sincronía A/V medida por FFmpeg en el propio fichero:
+una muestra, sin deriva. El plan 017 dejó `voltra-encode`: el trait
+`VideoEncoder`, las utilidades H.264 en Rust puro y x264 por `libavcodec` tras
+la feature `ffmpeg`, con la misma sincronía medida en el fichero comprimido. El
+plan 018 añadió `AudioEncoder` con AAC, el `Interleaver` de `voltra-output` y un
+origen común para todas las pistas: H.264 + AAC salen sincronizados a 0,35 ms,
+sin deriva, medidos con las marcas de presentación que ve un reproductor.
+
+```bash
+voltra record -o demo.mkv --seconds 10
+voltra record -o - | ffplay -
+cargo run --release -p voltra-cli --features ffmpeg -- record -o demo.mkv --video h264 --audio aac
+```
+
+La feature `ffmpeg` necesita las cabeceras de desarrollo de FFmpeg y `libclang`
+(ver el trabajo `encode` de CI). Siguiente paso: el criterio de salida de la
+fase, minutos de grabación sin deriva ni crecimiento de memoria, medidos.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -296,9 +325,17 @@ Decisiones ya tomadas (ver `docs/adr/`):
 | 0002 | Plataforma prioritaria: Linux (PipeWire + Wayland). |
 | 0003 | Encoding: hardware primero y sin copia a CPU; software solo como respaldo. |
 | 0004 | Interfaz: `egui`/`eframe`. |
+| 0005 | Grabación: Matroska nativo, escrito en flujo; MP4 después, por remuxeo. |
 
 Referencia base del diseño: `docs/references/obs-studio.md`.
 Formato de salida actual: `docs/references/y4m.md`.
 Composición acelerada: `docs/references/gpu-compositing.md`.
 Representación de audio: `docs/references/audio.md`.
+Mezclador de audio: `docs/references/audio-mixer.md`.
+Medidores de nivel: `docs/references/audio-meters.md`.
+Remuestreo: `docs/references/audio-resampling.md`.
+Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
+Grabar a fichero: `docs/references/recording.md`.
+El encoder de vídeo: `docs/references/encoding.md`.
+El encoder de audio y el entrelazado: `docs/references/audio-encoding.md`.
 Fases del producto: `docs/ROADMAP.md`.

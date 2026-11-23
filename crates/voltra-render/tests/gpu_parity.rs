@@ -440,7 +440,7 @@ fn the_adapter_reports_what_it_is() {
     };
     let info = context.info();
     eprintln!("adapter: {info}");
-    assert!(!info.name.is_empty());
+    assert_ne!(info.name, "");
     assert!(context.max_dimension() >= 2048);
 }
 

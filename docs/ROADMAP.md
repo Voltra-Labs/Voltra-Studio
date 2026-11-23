@@ -43,16 +43,51 @@ software, así que **no hay ninguna cifra de GPU** (`docs/PERFORMANCE.md` §3.6)
 Cerrar la fase 2 no requiere escribir código: requiere una máquina con GPU y una
 tarde.
 
-Mientras tanto arrancó la **fase 3**: el plan 011 dejó el vocabulario de audio
+Mientras tanto avanzó la **fase 3**. El plan 011 dejó el vocabulario de audio
 —frecuencia, disposición de canales, formatos de borde y el búfer float planar—
-en `voltra-core`. El siguiente paso es el **mezclador**, que es el criterio de
-salida de la fase: sumar pistas con volumen y paneo **sin asignar ni bloquear en
-el callback**.
+en `voltra-core`, y el plan 012 el **mezclador** en `voltra-audio`: pistas con
+volumen, balance/paneo y silencio, controladas desde otro hilo con atómicos, y
+**sin asignar ni bloquear en `mix()`**, comprobado por un test que cuenta
+asignaciones y por un lint que prohíbe los mutexes en la crate. 8 pistas en
+rampa cuestan 3,24 µs por bloque de 21,3 ms.
 
-Después, por orden de utilidad: audio (fase 3), encoding real (fase 4) —que es
-también lo que quita los 187 MB/s de Y4M—, captura con PipeWire (fase 5), el
-momento en que el programa sirve para algo, streaming (fase 6) e interfaz
-(fase 7).
+**La fase 3 está cerrada.** Los planes 013 a 015 completaron el camino del
+audio: **medidores** —pico, pico verdadero por BS.1770 y RMS, sin perder ningún
+pico y sin mutex, con la balística de OBS como función pura—; **remuestreo**
+polifase de razón exacta, plano hasta 20 kHz y con aliasing a −124 dB, frente a
+−20 dB del filtro por defecto de swr que usa OBS; y la **entrada de audio** por
+fuente, que alisa la fluctuación de las marcas de tiempo, remuestrea, coloca por
+marca de tiempo y entrega a cada tick su bloque exacto, sin mutex ni
+asignaciones. Diez segundos de una fuente a 44,1 kHz con ±5 ms de fluctuación,
+entregados desde un hilo y mezclados a 48 kHz en otro, salen con un error de
+−136 dB respecto al tono ideal.
+
+**Decisión al cerrar** (2026-11-22): lo que quedaba bajo "sincronía A/V" se
+reparte donde se puede medir.
+
+- **La corrección de deriva entre relojes de dispositivos** pasa a la fase 5. Sin
+  dispositivos no hay deriva que medir, y corregirla —remuestreo de razón
+  variable guiado por el margen de la cola— sin una medida sería una opinión.
+  Las métricas de margen de la entrada ya la enseñan.
+- **Atar el vídeo al reloj de audio** pasa a la fase 4, cuyo criterio de salida
+  ("sin deriva A/V") es exactamente esa medida, y que trae el pipeline donde
+  hacerla.
+
+**La fase 4 está en marcha.** El plan 016 dejó un muxer Matroska nativo que
+escribe en flujo —válido en cada byte, así que un cuelgue deja una grabación
+reproducible— y `voltra record`, que graba la escena con un tono mezclado por el
+mezclador de la fase 3. FFmpeg lee el fichero, y la sincronía medida en él es de
+una muestra, sin deriva. El plan 017 añadió el **encoder H.264** tras un trait
+validado en papel contra x264, NVENC, VAAPI y VideoToolbox: x264 por
+`libavcodec`, tras la feature `ffmpeg`, graba con la misma sincronía medida y
+veinte veces menos espacio. El plan 018 añadió el **encoder AAC** y el
+**entrelazado**: `voltra record --video h264 --audio aac` graba un fichero
+comprimido en las dos pistas, con la sincronía medida en marcas reales a 0,35 ms
+y sin deriva. Lo que queda para cerrar la fase es su criterio de salida:
+**grabar minutos sin deriva ni crecimiento de memoria**, medido.
+
+Después: captura con PipeWire (fase 5), el momento en que el programa sirve para
+algo, streaming (fase 6) e interfaz (fase 7).
 
 Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 
@@ -66,17 +101,30 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 ## Fase 3 — Audio
 - Vocabulario: frecuencia, canales, formatos de borde, búfer float planar
   (plan 011, hecho).
-- Mezclador multipista, medidores, resampling, sincronía A/V anclada al reloj de
-  audio.
+- Mezclador multipista con volumen, balance/paneo y silencio (plan 012, hecho).
+- Medidores: pico, pico verdadero, RMS y balística (plan 013, hecho).
+- Remuestreo polifase de razón exacta (plan 014, hecho).
+- Entrada de audio por fuente: alisado, remuestreo, colocación por marca de
+  tiempo, latencia explícita (plan 015, hecho).
 - **Criterio de salida:** mezcla sin asignaciones ni bloqueos en el callback.
+  **Cumplido** (plan 012). **Fase cerrada** con el plan 015.
 
 ## Fase 4 — Salida a fichero
-- Codificación de vídeo y audio, muxing, grabación real reproducible.
+- Muxer Matroska nativo en flujo y `voltra record` con A/V sincronizado y
+  medido por FFmpeg, aún sin comprimir (plan 016, hecho; ADR 0005).
+- Encoder H.264 (x264 por `libavcodec`, tras la feature `ffmpeg`) y grabación
+  comprimida con la misma sincronía medida (plan 017, hecho).
+- Encoder de audio AAC y entrelazado de encoders con retardo, con un origen
+  común para todas las pistas (plan 018, hecho).
+- Fotogramas B (el muxer ordenando por tiempo de decodificación).
+- El vídeo anclado al reloj de audio (venido de la fase 3).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni
   crecimiento de memoria.
 
 ## Fase 5 — Captura de plataforma
 - Pantalla, ventana, cámara y audio del sistema en la plataforma prioritaria.
+- Corrección de la deriva entre relojes de dispositivos, con remuestreo de razón
+  variable (venida de la fase 3).
 - **Criterio de salida:** captura a 60 fps con frames perdidos medidos y
   acotados.
 

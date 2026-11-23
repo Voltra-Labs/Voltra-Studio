@@ -9,6 +9,7 @@ Reproducir todo:
 ```bash
 cargo bench -p voltra-core
 cargo bench -p voltra-render
+cargo bench -p voltra-audio
 # El pipeline completo se mide solo: rendering y métricas por etapa a stderr.
 cargo run --release -p voltra-cli -- render -o /dev/null --size 1920x1080 --frames 60
 ```
@@ -80,6 +81,162 @@ Dos observaciones, ninguna accionable todavía:
 
 Ninguna se optimiza: el peor caso es el **0,01 % del bloque**. Están anotadas
 para que nadie las descubra otra vez creyendo que ha encontrado algo.
+
+El mezclador (plan 012), por bloque de 1024 frames estéreo a 48 kHz, con las
+pistas a ganancias distintas de 1 para que ningún atajo se cuele en la medida:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| Mezclar 1 pista estéreo, ganancia estable | 365 ns | 0,002 % | 012 |
+| **Mezclar 8 pistas estéreo, ganancia estable** | **2,70 µs** | **0,013 %** | 012 |
+| Mezclar 64 pistas estéreo, ganancia estable | 20,9 µs | 0,098 % | 012 |
+| Mezclar 8 pistas mono con paneo a estéreo | 2,15 µs | 0,010 % | 012 |
+| **Mezclar 8 pistas estéreo, todas en rampa** | **3,24 µs** | **0,015 %** | 012 |
+| Solo la comprobación de finitos, 8 pistas (todas rechazadas) | 1,22 µs | 0,006 % | 012 |
+
+El criterio de aceptación era 8 pistas en rampa por debajo del 1 % del bloque
+(213 µs): queda **65× por debajo**. Tres lecturas:
+
+1. **Escala lineal.** De 8 a 64 pistas, 7,7× el tiempo para 8× el trabajo:
+   unos 0,33 µs por pista estéreo, ~6 Gmuestras/s. 64 pistas son el 0,1 % del
+   bloque; el número de pistas no va a ser el límite de nada.
+2. **La rampa cuesta un 20 %** sobre la ganancia estable (3,24 frente a
+   2,70 µs). Es lo que se esperaba de un bucle que vectoriza con un flujo más;
+   el plan B de rampa por tramos (riesgo del plan 012) no hace falta.
+3. **El aislamiento de NaN es hasta la mitad del coste**: como mucho 1,22 de
+   2,70 µs —la cifra incluye silenciar la salida y la contabilidad—, una
+   lectura completa de cada bloque antes de sumarlo. Es caro en proporción y
+   gratis en absoluto (0,006 % del bloque). Fusionarlo con la suma ahorraría
+   una pasada a cambio de no poder retirar la pista una vez sumada. No se toca:
+   lo que compra —que una fuente rota no silencie a las demás— vale mucho más
+   que un microsegundo.
+
+Los medidores (plan 013), por bloque de 1024 frames estéreo a 48 kHz:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| `Meter`, pico por muestra y RMS | 222 ns | 0,001 % | 013 |
+| **`Meter`, pico verdadero (BS.1770, ×4, 48 coeficientes)** | **9,0 µs** | **0,042 %** | 013 |
+| `mix()` 8 pistas estéreo, estable, **con medidores de pista** | 3,25 µs | 0,015 % | 013 |
+| `mix()` 8 pistas estéreo, en rampa, con medidores | 3,81 µs | 0,018 % | 013 |
+| `mix()` 64 pistas estéreo, estable, con medidores | 26,6 µs | 0,12 % | 013 |
+| `mix()` 8 pistas mono con paneo, con medidores | 2,59 µs | 0,012 % | 013 |
+
+Las cifras de `mix()` de la tabla anterior quedan como el antes. El después,
+medido contra una línea base tomada en la misma sesión (2,66 µs para 8 pistas
+estables): **+23 %**, dentro del techo del +25 % que fijó el plan. La primera
+versión daba **+50 %** (4,08 µs), y cerrarlo costó dos cambios medidos:
+
+| Hipótesis | Resultado |
+|---|---|
+| La pasada de pico y energía, con 8 carriles, espera a la latencia de sus sumas (dos registros SSE por acumulador) | **Sí.** 16 carriles: 305 → 255 ns por bloque estéreo; `mix()` 4,08 → 3,40 µs. Aplicado. |
+| Más carriles, más rápido | **No.** 32 carriles: 310 ns y 4,35 µs; se acaban los 16 registros SSE. Descartado. |
+| Las atómicas pesan: los medidores de pista hacían un `fetch_max` de pico verdadero que siempre valía 0 | **Sí.** Sin él, y con una lectura relajada antes de cada `fetch_max` del pico: 3,40 → 3,25 µs. Aplicado. |
+| `f32::max` vale para el máximo | **No.** 854 ns frente a 304 por bloque estéreo, 2,8× más lento: su regla de NaN impide la instrucción vectorial. Se usa comparación explícita. |
+
+Lo que queda del +23 % es trabajo real: la pasada antigua solo detectaba NaN
+(~150 ns por pista); la nueva saca además pico y energía (~255 ns). Medir cada
+pista cuesta unos 0,1 µs por bloque, y no cuesta una pasada más.
+
+El pico verdadero cuesta **40× el pico por muestra**, que es lo que el diseño
+supuso al dejarlo opcional y solo en la salida. Al 0,04 % del bloque, sigue
+siendo despreciable para un medidor; no lo sería en cada una de 64 pistas
+(0,6 ms), y por eso no está ahí.
+
+El remuestreo (plan 014), por bloque de **entrada** de 1024 muestras estéreo:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| **44,1 → 48 kHz** (160/147 fases, 136 coeficientes) | **36,7 µs** | **0,17 %** | 014 |
+| 48 → 44,1 kHz (147/160 fases, 152 coeficientes) | 38,1 µs | 0,18 % | 014 |
+
+Son ~303 000 multiplicaciones-suma por bloque estéreo a 44,1 → 48: unas 8 G por
+segundo, 2,6 por ciclo. El umbral era el 1 % del bloque (213 µs): queda 5,8×
+por debajo. Es la parte más cara del audio hasta ahora, y es el precio
+consciente de un filtro 4× más largo que el de swr, que cambia −25 dB de imagen
+y −20 dB de aliasing por −126 y −124 dB (referencia
+`docs/references/audio-resampling.md` §3). Ocho fuentes a 44,1 kHz serían el
+1,4 % del bloque.
+
+| Hipótesis | Resultado |
+|---|---|
+| El producto escalar espera a la latencia de sus sumas, como la pasada de pico y energía del plan 013; dos acumuladores de 8 carriles intercalados lo arreglan | **No.** 38,3 → 51,6 µs (+29 %) subiendo y +6 % bajando. Revertido. Por qué no se ha investigado: sin el ensamblador delante, cualquier explicación sería una opinión, y con el coste 5,8× por debajo del umbral no hay perfil que pida seguir. Lo que sirvió en el plan 013 no se generaliza solo. |
+
+La entrada de audio (plan 015), por bloque de 1024 muestras estéreo a 48 kHz:
+
+| Operación | Coste | % de 21,3 ms | Plan |
+|---|---|---|---|
+| `push`, fuente a 48 kHz | 0,95 µs | 0,004 % | 015 |
+| `pull` | 0,99 µs | 0,005 % | 015 |
+| `push`, fuente a 44,1 kHz (bloques de 941, remuestreo incluido) | 38,0 µs | 0,18 % | 015 |
+
+El riesgo del plan era que las cargas y almacenamientos atómicos relajados del
+anillo no vectorizaran. No vectorizan, y no importa: copiar 2048 muestras de una
+en una cuesta menos de un microsegundo, veinte veces por debajo del umbral de
+21 µs. El anillo se queda en código seguro; no hay cifra que justifique
+`unsafe`. Con remuestreo, el `push` es el remuestreador (36,7 µs) más lo
+anterior.
+
+Extremo a extremo —fuente a 44,1 kHz con ±5 ms de fluctuación en un hilo,
+mezcla a 48 kHz en otro, 85 ms de latencia—, el margen mínimo antes de cada tick
+fue de **1976 muestras (41 ms)**, y el error frente al tono ideal, **−136 dB**.
+
+La grabación a Matroska (plan 016):
+
+| Operación | Coste | Plan |
+|---|---|---|
+| Muxear un fotograma I420 1080p, a `io::sink()` | 0,66 µs | 016 |
+| Muxear un bloque de 1024 muestras estéreo float, a `io::sink()` | 0,31 µs | 016 |
+| `voltra record`, 5 s a 1080p30, a fichero (468 MB) | 2,96 s | 016 |
+| Lo mismo, a `/dev/null` | 2,78 s | 016 |
+
+El muxer no cuenta: menos de un microsegundo por fotograma, porque escribe las
+filas de cada plano tal cual y la cabecera de cada bloque son unos pocos bytes.
+Grabar es componer y convertir en CPU —los ~18,5 ms por fotograma de §2— más el
+disco, que aquí añade un 6 % a 94 MB/s. Sin comprimir, el fichero es el problema
+(§3.5); el arreglo es el encoder, el plan siguiente.
+
+El encoder H.264 (plan 017), x264 `veryfast` por `libavcodec`, sin fotogramas
+B, en régimen continuo en esta máquina (4 hilos, AVX-512):
+
+| Operación | Coste por fotograma | % de 16,6 ms | Plan |
+|---|---|---|---|
+| x264 `veryfast`, 720p | 2,85 ms | 17 % | 017 |
+| **x264 `veryfast`, 1080p** | **4,69 ms** | **28 %** | 017 |
+| `voltra record --video h264`, 6 s a 640×360 | 0,46 s en total | — | 017 |
+
+Es rendimiento, no latencia: x264 trabaja con varios fotogramas a la vez
+(`threads=6`, `rc_lookahead=10`), así que esos milisegundos son de **toda la
+CPU**. Sumados a los ~18,5 ms de componer y convertir en CPU (§2), 1080p60 por
+software no cabe, y no está previsto que quepa: es exactamente el argumento del
+ADR 0003 para poner el hardware primero. Lo que este número fija es el coste del
+respaldo.
+
+Tamaño: 6 s a 640×360 ocupan 64,5 MB sin comprimir y 3,2 MB en H.264 con un
+techo de 6000 kbit/s, de los que 2,3 MB son el audio PCM. El vídeo usa menos que
+el techo cuando la escena es sencilla: con un techo de 1000 kbit/s, 626 kbit/s.
+
+El encoder de audio y el entrelazado (plan 018):
+
+| Operación | Coste | % del presupuesto | Plan |
+|---|---|---|---|
+| **AAC, bloque de 1024 muestras estéreo** (`aac` de FFmpeg, 128 kbps) | **958 µs** | **4,5 % de 21,3 ms** | 018 |
+| Entrelazar un paquete de vídeo (12,5 KB) y uno de audio (400 B) | 119 ns | — | 018 |
+| `voltra record --video h264 --audio aac`, 6 s a 320×180 | 0,20 s en total | — | 018 |
+
+El AAC nativo de FFmpeg es caro para lo que hace: casi un milisegundo por bloque
+en un hilo, el 4,5 % del tiempo real del audio. No es el hilo de audio —el
+encoder vive donde se escribe el fichero—, pero es CPU que no está para otra
+cosa.
+
+| Hipótesis | Resultado |
+|---|---|
+| El codificador de cuantización por defecto es el lento (`twoloop`); `aac_coder=fast` lo abarata | **No.** 958 → 983 µs (+3 %, ruido): en FFmpeg 6.1 el de por defecto ya es el rápido. Revertido. Qué cuesta de verdad queda sin perfilar. |
+
+El entrelazador no cuenta: una copia a un búfer reutilizado y la elección de la
+cabeza más temprana, unos 60 ns por paquete. El pico de paquetes en cola, que
+`voltra record` informa, es el retardo de x264 (su *lookahead*) en paquetes de
+audio: 45 en la grabación de prueba.
 
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la

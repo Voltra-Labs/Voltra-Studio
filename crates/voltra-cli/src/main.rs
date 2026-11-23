@@ -9,6 +9,7 @@
 
 mod demo;
 mod info;
+mod record;
 mod render;
 
 use anyhow::Result;
@@ -41,6 +42,8 @@ enum Command {
     Info,
     /// Composite a scene and write it out as a YUV4MPEG2 stream.
     Render(render::Args),
+    /// Record the scene with sound to a Matroska file.
+    Record(record::Args),
 }
 
 fn main() -> Result<()> {
@@ -50,6 +53,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Info => info::print(&mut std::io::stdout())?,
         Command::Render(ref args) => render::run(args)?,
+        Command::Record(ref args) => record::run(args)?,
     }
 
     Ok(())

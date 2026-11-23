@@ -1,0 +1,38 @@
+[package]
+name = "voltra-audio"
+description = "Audio processing for Voltra Studio: the real-time mixer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+voltra-core = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Same lean configuration as voltra-core: numbers, no plots.
+criterion = { version = "0.7", default-features = false, features = [
+    "cargo_bench_support",
+] }
+
+[[bench]]
+name = "mix"
+harness = false
+
+[[bench]]
+name = "meter"
+harness = false
+
+[[bench]]
+name = "resample"
+harness = false
+
+[[bench]]
+name = "input"
+harness = false
+
+[lints]
+workspace = true

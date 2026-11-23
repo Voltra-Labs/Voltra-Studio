@@ -69,6 +69,42 @@ jobs:
       - name: Parity against the CPU compositor
         run: cargo test -p voltra-render --features gpu
 
+  encode:
+    name: Encoders (FFmpeg)
+    # Pinned: `ffmpeg-sys-next` 6.1 binds FFmpeg 6.1's headers, which is what
+    # Ubuntu 24.04 ships. Newer images ship an FFmpeg without `avfft.h`, and
+    # moving to it is a dependency upgrade of its own, not a CI change.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The `ffmpeg` feature generates bindings from the installed FFmpeg
+      # headers (bindgen needs libclang) and links the system libraries, which
+      # also provide x264. The default build never needs any of this.
+      - name: Install FFmpeg development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libavcodec-dev libavutil-dev pkg-config clang libclang-dev ffmpeg
+
+      - name: Lints
+        run: |
+          cargo clippy -p voltra-encode --all-targets --features ffmpeg -- -D warnings
+          cargo clippy -p voltra-cli --all-targets --features ffmpeg -- -D warnings
+
+      - name: Encoder tests
+        run: cargo test -p voltra-encode --features ffmpeg
+
+      # Records H.264 and measures its audio/video sync with ffmpeg.
+      - name: Recording tests
+        run: cargo test -p voltra-cli --features ffmpeg
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
@@ -87,7 +123,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo check --workspace --all-targets
+      # `+version` explicitly: `rust-toolchain.toml` would otherwise override
+      # the toolchain installed above with stable, and the job would check
+      # nothing. Default features only; `gpu` needs what `wgpu` needs (1.87).
+      - run: cargo +${{ steps.msrv.outputs.version }} check --workspace --all-targets
 
   deny:
     name: Licences and advisories
