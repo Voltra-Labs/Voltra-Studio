@@ -7,91 +7,12 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
-struct TempFile(PathBuf);
+mod common;
 
-impl TempFile {
-    fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!("voltra-{}-{name}.mkv", std::process::id())))
-    }
-}
-
-impl Drop for TempFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
-fn have_ffmpeg() -> bool {
-    let found = ["ffmpeg", "ffprobe"].iter().all(|tool| {
-        Command::new(tool)
-            .arg("-version")
-            .output()
-            .is_ok_and(|out| out.status.success())
-    });
-    if !found {
-        eprintln!("skipping: ffmpeg and ffprobe are needed to judge the recording");
-    }
-    found
-}
-
-fn record(output: &Path, extra: &[&str]) -> std::process::Output {
-    let out = Command::new(env!("CARGO_BIN_EXE_voltra"))
-        .args(["record", "-o"])
-        .arg(output)
-        .args(["--size", "320x180", "--fps", "30"])
-        .args(extra)
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    out
-}
-
-/// The presentation time of every decoded frame of stream `kind` (`v`, `a`).
-fn frame_times(file: &Path, kind: &str) -> Vec<f64> {
-    let out = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            kind,
-            "-show_entries",
-            "frame=pts_time",
-            "-of",
-            "csv=p=0",
-        ])
-        .arg(file)
-        .output()
-        .unwrap();
-    String::from_utf8(out.stdout)
-        .unwrap()
-        .lines()
-        .filter_map(|line| line.split(',').next()?.parse().ok())
-        .collect()
-}
-
-/// Decode one stream of `file` to raw bytes with `FFmpeg`.
-fn decode(file: &Path, args: &[&str]) -> Vec<u8> {
-    let out = Command::new("ffmpeg")
-        .args(["-v", "error", "-i"])
-        .arg(file)
-        .args(args)
-        .arg("-")
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    out.stdout
-}
+use common::{TempFile, flash_times, have_ffmpeg, record, tone_onsets};
 
 #[test]
 fn the_recording_is_what_ffmpeg_expects() {
@@ -123,53 +44,9 @@ fn the_recording_is_what_ffmpeg_expects() {
 /// 1 to 5 of a six-second recording, measured on what `FFmpeg` decodes. Fails
 /// the test if any is off by half a frame or more, or the offset grows.
 fn sync_offsets(file: &Path) -> Vec<f64> {
-    // Real timestamps, not indices: a stream shifted as a whole must show up.
-    // One luma byte per decoded frame, frames passed through as they are —
-    // FFmpeg would otherwise duplicate frames to fill a timeline that starts
-    // with the audio's priming — paired with each frame's own time.
-    let times = frame_times(file, "v");
-    let luma = decode(
-        file,
-        &[
-            "-map",
-            "0:v",
-            "-fps_mode",
-            "passthrough",
-            "-vf",
-            "scale=1:1,format=gray",
-            "-f",
-            "rawvideo",
-        ],
-    );
-    assert_eq!(luma.len(), times.len(), "one luma byte per decoded frame");
-    let flashes: Vec<f64> = luma
-        .iter()
-        .zip(&times)
-        .filter(|&(&value, _)| value > 200)
-        .map(|(_, &time)| time)
-        .collect();
+    let flashes = flash_times(file);
     assert_eq!(flashes.len(), 6, "one flash per second: {flashes:?}");
-
-    // Mono float samples from the first decoded one, which is at the audio's
-    // first frame time: each tone starts after at least 10 ms of silence.
-    let audio_start = frame_times(file, "a")[0];
-    let pcm = decode(file, &["-map", "0:a", "-ac", "1", "-f", "f32le"]);
-    let samples: Vec<f32> = pcm
-        .chunks_exact(4)
-        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-        .collect();
-    let mut onsets = Vec::new();
-    let mut quiet = usize::MAX;
-    for (index, &sample) in samples.iter().enumerate() {
-        if sample.abs() > 0.02 {
-            if quiet > 480 {
-                onsets.push(audio_start + index as f64 / 48_000.0);
-            }
-            quiet = 0;
-        } else {
-            quiet = quiet.saturating_add(1);
-        }
-    }
+    let onsets = tone_onsets(file);
 
     // Second 0 is skipped: the mixer fades a new track in over its first block,
     // so the first tone starts too softly to time. Every other second must

@@ -1,8 +1,9 @@
 # 019 — Grabación larga: deriva y memoria medidas
 
 - **Fase:** 4 (criterio de salida)
-- **Estado:** en curso (2026-11-23) — ejecutado sin esperar revisión del plan,
-  por indicación expresa del responsable ("no me preguntes, dale").
+- **Estado:** completado (2026-11-23) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale"). Cierra la fase 4.
 
 ## Objetivo
 
@@ -122,3 +123,76 @@ anotados.
 - **Tres minutos en CI** cuestan: a 160×90, unos 6 s de grabación y lo que
   tarde FFmpeg en decodificar. Si pasa de un minuto, se baja la duración y se
   dice.
+
+## Resultado
+
+**El criterio de salida de la fase 4 se cumple.** Puerta de calidad en verde:
+**340 tests** por defecto (desde 336) y **53** con `--features ffmpeg` (desde
+47). Commits: documentos; el contador y `--report-every`; el arreglo del encoder
+H.264; y los tests largos con esta documentación.
+
+### Una hora a 29,97 fps, H.264 + AAC
+
+El test largo con `VOLTRA_LONG_SECONDS=3600`, 160×90, en 1 min 55 s:
+
+| Medida | Resultado |
+|---|---|
+| Pitido de cada segundo, tras su segundo | **354,2 µs en los 3599 segundos medidos**: ni una décima de µs de variación |
+| Fotograma blanco, frente al instante exacto de su fotograma | ≤ 0,5 ms en todos: el redondeo de las marcas de Matroska |
+| Heap de Rust, desde los 10 s | bloques constantes; +39,7 KB en 17 reasignaciones |
+| Residente, desde los 10 s | +184 KiB |
+
+Y a 320×180 (`PERFORMANCE.md`): sin encoders, todo plano desde el primer
+minuto, el residente incluido; con ellos, **cero asignaciones del minuto 15 al
+60** y el residente quieto en ese tramo. Lo que crece antes son búferes
+reutilizados que llegan al mayor paquete visto, acotados por él.
+
+El contador no cuesta nada que se pueda medir (`voltra record` de 300 s: 4,72
+frente a 4,73 s en crudo): en régimen estable no hay asignaciones que contar.
+
+## Lo que encontraron las pruebas
+
+1. **El encoder H.264 desplazaba el vídeo 1 ms a 29,97 fps.** Convertía cada
+   marca en un índice de fotograma contado desde el cero y redondeado. Con el
+   origen de la grabación a 1 s —29,97 fotogramas, no un número entero—, cada
+   paquete salía un milisegundo tarde. A 30 fps exactos no se veía, y por eso
+   los tests del plan 017 no lo vieron; con un reloj de captura real, que
+   empieza en cualquier instante, el desfase podía llegar a medio fotograma. Los
+   índices cuentan ahora desde el primer fotograma, y un test lo fija: diez
+   fotogramas a 29,97 fps desde 1 s salen con sus marcas exactas (fallaba por
+   1 ms antes del arreglo). El AAC tiene el mismo patrón con muestras, pero su
+   error es de media muestra (10 µs) como mucho, y queda anotado.
+2. **El informe asignaba al leer `/proc/self/status`**: siete asignaciones por
+   informe, que el propio informe contaba. Ahora lee en un búfer que conserva su
+   capacidad, y el test puede exigir cero.
+3. **`VmHWM` no es fiable como pico**: al final de una hora daba 35 720 KiB,
+   menos que un `VmRSS` de 35 964 leído antes. Linux lo actualiza de forma
+   perezosa. El resumen da el residente actual.
+
+## Desviaciones respecto al plan
+
+- **El criterio de bytes vivos del test es una cota, no una igualdad**: el plan
+  pedía que no crecieran tras el primer informe, pero con encoders crecen
+  mientras llega un paquete mayor que todos los anteriores. El test exige
+  bloques constantes, como mucho 64 KiB y 32 reasignaciones; la grabación
+  cruda, que no tiene ese efecto, exige igualdad exacta.
+- **El residente se lee de `/proc/self/status`**, como decía el diseño, y el
+  pico de ahí no se usa (punto 3).
+- **Lo que se mide de la sincronía** se separó en error del audio y error del
+  vídeo, cada uno contra su instante exacto, en vez de su diferencia: a 29,97 fps
+  el destello cae hasta 33 ms después del segundo por construcción.
+- **CI dejó de pasar por el camino** y se arregló en la PR que llevó las fases 3
+  y 4 a `main`: Rust 1.100 depreca `fetch_update` y añade un lint; el trabajo de
+  MSRV nunca había comprobado 1.85 —`rust-toolchain.toml` imponía `stable`— y,
+  comprobado de verdad, encontró un `let` encadenado (1.88); la imagen nueva de
+  Ubuntu trae un FFmpeg que `ffmpeg-sys-next` 6.1 no sabe enlazar; y
+  `cargo-deny` empezó a rechazar la licencia de las propias crates.
+- **Salen de la fase 4** el vídeo anclado al reloj de audio (a la 5) y los
+  fotogramas B (a la 6), con su razón en el ROADMAP.
+
+## Pasos futuros anotados
+
+- Fijar la toolchain a una versión concreta en `rust-toolchain.toml`: con
+  `stable` flotante, una versión nueva de Rust puede romper CI sin que cambie
+  el código, que es lo que pasó.
+- Anclar también el contador de muestras del encoder AAC a su primer bloque.

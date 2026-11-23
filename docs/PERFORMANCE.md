@@ -242,6 +242,23 @@ Las cuatro últimas son del pipeline entero —componer, convertir y escribir—
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.
 
+Grabaciones largas (plan 019), con `voltra record --report-every`: lo vivo
+según el asignador contador y el residente según `/proc/self/status`:
+
+| Grabación | Heap de Rust tras el arranque | Residente | Sincronía |
+|---|---|---|---|
+| Crudo, 320×180, 10 min | **Plano desde el primer minuto**: 908 436 B en 47 bloques, 0 asignaciones | 19 288 KiB, plano | — |
+| H.264 + AAC, 320×180, 60 min | 81 bloques constantes; los bytes crecen hasta el minuto 15 (724 → 737 KB, dos reasignaciones) y luego **0 asignaciones en 45 min** | 35 964 KiB, plano del minuto 15 al 60 | — |
+| H.264 + AAC, 160×90 a 29,97 fps, 60 min (el test, `VOLTRA_LONG_SECONDS=3600`) | +39,7 KB en 17 reasignaciones desde los 10 s | +184 KiB desde los 10 s | Pitido a **354,2 µs** de su segundo, igual en los 3599; destellos a ≤ 0,5 ms de su instante exacto |
+| `voltra record` 300 s con y sin el contador (3 ejecuciones) | crudo 4,72 / 4,73 s; H.264 + AAC 10,1 / 9,7 s (±0,8 s de ruido) | — | — |
+
+Lo que crece al principio con los encoders son los búferes reutilizados —los del
+*pool* del entrelazador y el de la conversión Annex B— que se agrandan cuando
+llega el paquete más grande visto hasta entonces: un fotograma clave mayor que
+los anteriores. Están acotados por el tamaño máximo de paquete; el residente,
+por lo que reservan x264 y FFmpeg a su manera. El contador no cuesta nada que se
+pueda medir porque, en régimen estable, el pipeline no asigna.
+
 ---
 
 ## 3. Deuda abierta
