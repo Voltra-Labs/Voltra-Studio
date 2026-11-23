@@ -1,4 +1,5 @@
-//! Encoding: the encoder trait, H.264 bitstream tools, and the encoders.
+//! Encoding: the video and audio encoder traits, H.264 bitstream tools, and the
+//! encoders.
 //!
 //! The shape of [`VideoEncoder`] follows libobs's `obs_encoder_info` and was
 //! checked on paper against x264, NVENC, VAAPI and `VideoToolbox` before being
@@ -22,16 +23,18 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![allow(clippy::must_use_candidate)]
 
+mod audio;
 mod encoder;
 mod error;
 #[cfg(feature = "ffmpeg")]
 mod ffmpeg;
 pub mod h264;
 
+pub use audio::{AudioCodec, AudioEncoder, AudioEncoderInfo, AudioSettings};
 pub use encoder::{
     Bitstream, Codec, EncodedPacket, EncoderInfo, EncoderInput, PacketSink, VideoEncoder,
     VideoSettings,
 };
 pub use error::{Error, Result};
 #[cfg(feature = "ffmpeg")]
-pub use ffmpeg::FfmpegVideoEncoder;
+pub use ffmpeg::{FfmpegAudioEncoder, FfmpegVideoEncoder};
