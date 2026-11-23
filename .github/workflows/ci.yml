@@ -69,6 +69,33 @@ jobs:
       - name: Parity against the CPU compositor
         run: cargo test -p voltra-render --features gpu
 
+  encode:
+    name: Encoders (FFmpeg)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The `ffmpeg` feature generates bindings from the installed FFmpeg
+      # headers (bindgen needs libclang) and links the system libraries, which
+      # also provide x264. The default build never needs any of this.
+      - name: Install FFmpeg development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libavcodec-dev libavutil-dev pkg-config clang libclang-dev ffmpeg
+
+      - name: Lints
+        run: cargo clippy -p voltra-encode --all-targets --features ffmpeg -- -D warnings
+
+      - name: Encoder tests
+        run: cargo test -p voltra-encode --features ffmpeg
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest

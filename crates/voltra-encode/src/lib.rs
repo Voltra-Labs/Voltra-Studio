@@ -24,6 +24,8 @@
 
 mod encoder;
 mod error;
+#[cfg(feature = "ffmpeg")]
+mod ffmpeg;
 pub mod h264;
 
 pub use encoder::{
@@ -31,3 +33,5 @@ pub use encoder::{
     VideoSettings,
 };
 pub use error::{Error, Result};
+#[cfg(feature = "ffmpeg")]
+pub use ffmpeg::FfmpegVideoEncoder;

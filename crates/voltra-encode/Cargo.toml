@@ -8,9 +8,20 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# Encoders through libavcodec (ADR 0003): x264 today, VAAPI and NVENC by name
+# later. Needs FFmpeg's development headers and libclang to generate bindings,
+# so it is never a default feature.
+ffmpeg = ["dep:ffmpeg-sys-next"]
+
 [dependencies]
 voltra-core = { workspace = true }
 thiserror = { workspace = true }
+# Bindings generated from the installed FFmpeg headers; only libavcodec (and
+# the libavutil it implies). Version 6.1 matches FFmpeg 6.1.
+ffmpeg-sys-next = { version = "6.1", default-features = false, features = [
+    "avcodec",
+], optional = true }
 
 [lints]
 workspace = true

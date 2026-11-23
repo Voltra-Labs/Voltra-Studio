@@ -23,6 +23,9 @@ allow = [
     "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
+    # ffmpeg-sys-next, the generated FFmpeg bindings behind voltra-encode's
+    # `ffmpeg` feature. Permissive; FFmpeg itself is linked from the system.
+    "WTFPL",
     "Zlib",
 ]
 confidence-threshold = 0.9
