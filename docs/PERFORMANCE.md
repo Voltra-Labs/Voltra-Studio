@@ -196,6 +196,26 @@ Grabar es componer y convertir en CPU —los ~18,5 ms por fotograma de §2— m�
 disco, que aquí añade un 6 % a 94 MB/s. Sin comprimir, el fichero es el problema
 (§3.5); el arreglo es el encoder, el plan siguiente.
 
+El encoder H.264 (plan 017), x264 `veryfast` por `libavcodec`, sin fotogramas
+B, en régimen continuo en esta máquina (4 hilos, AVX-512):
+
+| Operación | Coste por fotograma | % de 16,6 ms | Plan |
+|---|---|---|---|
+| x264 `veryfast`, 720p | 2,85 ms | 17 % | 017 |
+| **x264 `veryfast`, 1080p** | **4,69 ms** | **28 %** | 017 |
+| `voltra record --video h264`, 6 s a 640×360 | 0,46 s en total | — | 017 |
+
+Es rendimiento, no latencia: x264 trabaja con varios fotogramas a la vez
+(`threads=6`, `rc_lookahead=10`), así que esos milisegundos son de **toda la
+CPU**. Sumados a los ~18,5 ms de componer y convertir en CPU (§2), 1080p60 por
+software no cabe, y no está previsto que quepa: es exactamente el argumento del
+ADR 0003 para poner el hardware primero. Lo que este número fija es el coste del
+respaldo.
+
+Tamaño: 6 s a 640×360 ocupan 64,5 MB sin comprimir y 3,2 MB en H.264 con un
+techo de 6000 kbit/s, de los que 2,3 MB son el audio PCM. El vídeo usa menos que
+el techo cuando la escena es sencilla: con un techo de 1000 kbit/s, 626 kbit/s.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

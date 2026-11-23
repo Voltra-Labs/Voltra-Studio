@@ -1,8 +1,9 @@
 # 017 — Encoder H.264
 
 - **Fase:** 4
-- **Estado:** en curso (2026-11-22) — ejecutado sin esperar revisión del plan,
-  por indicación expresa del responsable ("no me preguntes, dale")
+- **Estado:** completado (2026-11-23) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale").
 
 ## Objetivo
 
@@ -155,3 +156,62 @@ importa el hardware.
 - **El `avcC` no coincide con el de FFmpeg.** El test lo compara con lo que
   escribe `ffmpeg` para el mismo flujo; si difiere, manda el de FFmpeg, que es el
   que leen los reproductores.
+
+## Resultado
+
+Puerta de calidad en verde en las dos configuraciones: por defecto, sin FFmpeg,
+**325 tests** (desde 314); y con `--features ffmpeg`, **39 tests** en
+`voltra-encode` y `voltra-cli`, entre ellos los 7 del encoder x264 y los 4 de
+grabación. Cuatro commits:
+documentos, el trait con `h264`, x264 por `libavcodec` con su trabajo de CI, y
+Matroska H.264 con `voltra record --video h264`.
+
+### Lo que quedó
+
+- `voltra-encode`: `VideoEncoder`, `EncoderInput`, `EncodedPacket`,
+  `Bitstream`, `VideoSettings`; `h264::{nal_units, is_keyframe,
+  to_length_prefixed, decoder_config}`.
+- `FfmpegVideoEncoder` tras `ffmpeg`, con todo el `unsafe` en un módulo y
+  envoltorios RAII para contexto, fotograma y paquete.
+- `TrackSpec::H264` en Matroska, con el `avcC` como `CodecPrivate`.
+- `voltra record --video h264 --bitrate N`; sin la feature, se rechaza con una
+  explicación.
+- Un trabajo de CI que instala las cabeceras de FFmpeg y corre clippy y tests
+  de las dos crates con la feature.
+
+### Lo que dicen las pruebas
+
+- **El `avcC` coincide byte a byte con el de FFmpeg** para el mismo flujo de
+  x264.
+- **x264:** 90 fotogramas dan 90 paquetes en orden, con sus marcas exactas;
+  claves en 0 y 60 (2 s a 30 fps); perfil High.
+- **FFmpeg lee la grabación:** `h264` High a 640×360, 180 fotogramas,
+  decodificada sin avisos.
+- **Sincronía A/V en el fichero comprimido: 20,8 µs, igual que sin comprimir**,
+  y sin deriva en cinco segundos.
+- **Tamaño:** 6 s a 640×360, de 64,5 MB a 3,2 MB.
+
+### Coste
+
+x264 `veryfast`: 2,85 ms por fotograma a 720p y 4,69 ms a 1080p, con toda la
+CPU. Detalle en `PERFORMANCE.md`.
+
+## Desviaciones respecto al plan
+
+- **"CBR" era una palabra de más.** Lo configurado es una tasa con el VBV
+  limitado a ella, sin relleno: x264 gasta menos cuando la escena es sencilla
+  (626 kbit/s con un techo de 1000). Para grabar es lo que conviene; para emitir
+  por RTMP, donde algunos servidores quieren CBR estricto, hará falta `filler` y
+  `nal-hrd=cbr`, y se anota para el plan de streaming. La documentación de
+  `VideoSettings` y del encoder dice ahora "techo".
+- **El test de tamaño cambió de pregunta.** El plan pedía comparar con el
+  fichero sin comprimir, pero en una prueba de 320×180 el audio PCM pesa más que
+  el vídeo y la razón no medía el encoder. Se comprueba en cambio que el vídeo
+  respeta el techo pedido.
+- **libav calla por debajo de `warning`.** x264 imprime su cadena de opciones
+  entera en cada apertura; el encoder baja el nivel de log de libav una vez, al
+  abrir el primero. Los avisos y errores siguen saliendo.
+- **`TrackSpec` dejó de ser `Copy`**, como preveía el plan, porque lleva el
+  `avcC`.
+- **El benchmark de x264 solo existe con la feature** (`required-features`), y
+  la compilación por defecto no lo ve.

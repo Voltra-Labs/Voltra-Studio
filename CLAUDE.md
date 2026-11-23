@@ -275,8 +275,8 @@ cargo run --release -p voltra-cli --features gpu -- render -o demo.y4m --gpu
 ```
 
 Crates vivas: `voltra-core`, `voltra-audio`, `voltra-render`, `voltra-sources`,
-`voltra-output` y `voltra-cli`; las demás se crearán cuando haya código que
-meter en ellas.
+`voltra-encode`, `voltra-output` y `voltra-cli`; las demás se crearán cuando
+haya código que meter en ellas.
 
 **La fase 2 no se cierra por falta de una medición, no de código.** Su criterio
 de salida es 1080p60 dentro del presupuesto. El camino CPU está 8× por encima
@@ -299,15 +299,19 @@ fase 4 (`docs/ROADMAP.md`).
 
 **Fase 4 en curso.** El plan 016 dejó un muxer Matroska nativo en
 `voltra-output`, escrito en flujo (ADR 0005), y `voltra record`, que graba la
-escena con sonido —vídeo I420 y PCM float, aún sin comprimir— con la sincronía
-A/V medida por FFmpeg en el propio fichero: una muestra, sin deriva.
+escena con sonido con la sincronía A/V medida por FFmpeg en el propio fichero:
+una muestra, sin deriva. El plan 017 dejó `voltra-encode`: el trait
+`VideoEncoder`, las utilidades H.264 en Rust puro y x264 por `libavcodec` tras
+la feature `ffmpeg`, con la misma sincronía medida en el fichero comprimido.
 
 ```bash
 voltra record -o demo.mkv --seconds 10
 voltra record -o - | ffplay -
+cargo run --release -p voltra-cli --features ffmpeg -- record -o demo.mkv --video h264
 ```
 
-Siguiente paso: los encoders (ADR 0003).
+La feature `ffmpeg` necesita las cabeceras de desarrollo de FFmpeg y `libclang`
+(ver el trabajo `encode` de CI). Siguiente paso: el encoder de audio.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -328,4 +332,5 @@ Medidores de nivel: `docs/references/audio-meters.md`.
 Remuestreo: `docs/references/audio-resampling.md`.
 Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
 Grabar a fichero: `docs/references/recording.md`.
+El encoder de vídeo: `docs/references/encoding.md`.
 Fases del producto: `docs/ROADMAP.md`.

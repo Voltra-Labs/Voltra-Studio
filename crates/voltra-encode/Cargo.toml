@@ -23,5 +23,15 @@ ffmpeg-sys-next = { version = "6.1", default-features = false, features = [
     "avcodec",
 ], optional = true }
 
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = [
+    "cargo_bench_support",
+] }
+
+[[bench]]
+name = "x264"
+harness = false
+required-features = ["ffmpeg"]
+
 [lints]
 workspace = true

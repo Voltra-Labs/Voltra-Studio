@@ -19,7 +19,7 @@ const CLUSTER_SPAN_MS: u64 = 1_000;
 const CLUSTER_LIMIT_MS: u64 = 32_000;
 
 /// One track of a recording.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TrackSpec {
     /// Uncompressed I420 video (`V_UNCOMPRESSED`, `FourCC` `I420`).
@@ -28,6 +28,16 @@ pub enum TrackSpec {
         size: FrameSize,
         /// Frame rate, written as the track's default frame duration.
         fps: Fps,
+    },
+    /// H.264 (`V_MPEG4/ISO/AVC`). Blocks are length-prefixed NAL units,
+    /// written with [`MatroskaWriter::write_block`].
+    H264 {
+        /// Frame size.
+        size: FrameSize,
+        /// Frame rate, written as the track's default frame duration.
+        fps: Fps,
+        /// The `AVCDecoderConfigurationRecord`, stored as `CodecPrivate`.
+        decoder_config: Vec<u8>,
     },
     /// 32-bit float PCM audio, interleaved (`A_PCM/FLOAT/IEEE`).
     PcmAudio {
@@ -133,7 +143,7 @@ impl<W: Write> MatroskaWriter<W> {
     /// [`Error::Config`] when the track is not raw video or the frame is not
     /// I420 at its size; otherwise as [`write_block`](Self::write_block).
     pub fn write_video(&mut self, track: usize, frame: &VideoFrame, pts: Timestamp) -> Result<()> {
-        let Some(TrackSpec::RawVideo { size, fps }) = self.tracks.get(track).copied() else {
+        let Some(&TrackSpec::RawVideo { size, fps }) = self.tracks.get(track) else {
             return Err(Error::config(format!("track {track} is not raw video")));
         };
         if frame.format() != PixelFormat::I420 || frame.size() != size {
@@ -167,7 +177,7 @@ impl<W: Write> MatroskaWriter<W> {
     /// [`Error::Config`] when the track is not PCM audio or the block's rate or
     /// layout differ; otherwise as [`write_block`](Self::write_block).
     pub fn write_audio(&mut self, track: usize, block: &AudioBuffer) -> Result<()> {
-        let Some(TrackSpec::PcmAudio { rate, layout }) = self.tracks.get(track).copied() else {
+        let Some(&TrackSpec::PcmAudio { rate, layout }) = self.tracks.get(track) else {
             return Err(Error::config(format!("track {track} is not PCM audio")));
         };
         if block.rate() != rate || block.layout() != layout {
@@ -221,7 +231,15 @@ impl<W: Write> MatroskaWriter<W> {
         self.last = Some(pts);
         let origin = *self.origin.get_or_insert(pts);
         let ms = to_ms(pts.since(origin));
-        self.extend(pts, std::time::Duration::ZERO);
+        // A video block lasts a frame; audio blocks extend by their own length
+        // in `write_audio`.
+        let frame = match self.tracks.get(track) {
+            Some(TrackSpec::RawVideo { fps, .. } | TrackSpec::H264 { fps, .. }) => {
+                fps.frame_duration()
+            }
+            _ => std::time::Duration::ZERO,
+        };
+        self.extend(pts, frame);
 
         let opens = match self.cluster {
             None => true,
@@ -333,6 +351,21 @@ fn write_header(out: &mut Vec<u8>, tracks: &[TrackSpec]) -> Result<usize> {
         ebml::put_uint(&mut entry, id::TRACK_UID, number);
         ebml::put_uint(&mut entry, id::FLAG_LACING, 0);
         match *track {
+            TrackSpec::H264 {
+                size,
+                fps,
+                ref decoder_config,
+            } => {
+                ebml::put_uint(&mut entry, id::TRACK_TYPE, 1);
+                ebml::put_bytes(&mut entry, id::CODEC_ID, b"V_MPEG4/ISO/AVC");
+                ebml::put_bytes(&mut entry, id::CODEC_PRIVATE, decoder_config);
+                let frame = u64::try_from(fps.frame_duration().as_nanos()).unwrap_or(u64::MAX);
+                ebml::put_uint(&mut entry, id::DEFAULT_DURATION, frame);
+                let mut video = Vec::new();
+                ebml::put_uint(&mut video, id::PIXEL_WIDTH, u64::from(size.width()));
+                ebml::put_uint(&mut video, id::PIXEL_HEIGHT, u64::from(size.height()));
+                ebml::put_master(&mut entry, id::VIDEO, &video);
+            }
             TrackSpec::RawVideo { size, fps } => {
                 if size.width() % 2 != 0 || size.height() % 2 != 0 {
                     return Err(Error::config(format!(

@@ -91,10 +91,16 @@ jobs:
             libavcodec-dev libavutil-dev pkg-config clang libclang-dev ffmpeg
 
       - name: Lints
-        run: cargo clippy -p voltra-encode --all-targets --features ffmpeg -- -D warnings
+        run: |
+          cargo clippy -p voltra-encode --all-targets --features ffmpeg -- -D warnings
+          cargo clippy -p voltra-cli --all-targets --features ffmpeg -- -D warnings
 
       - name: Encoder tests
         run: cargo test -p voltra-encode --features ffmpeg
+
+      # Records H.264 and measures its audio/video sync with ffmpeg.
+      - name: Recording tests
+        run: cargo test -p voltra-cli --features ffmpeg
 
   msrv:
     name: MSRV

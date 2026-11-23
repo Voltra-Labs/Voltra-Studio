@@ -30,6 +30,7 @@ use voltra_core::{
     AudioBuffer, ChannelLayout, ColorRange, ColorSpace, ColorSpec, Fps, FrameSize, PixelFormat,
     SampleRate, ScaleFilter, TickContext, Timestamp, VideoFrame, rgb_to_yuv,
 };
+use voltra_encode::{Bitstream, EncodedPacket, EncoderInput, VideoEncoder, VideoSettings, h264};
 use voltra_output::{MatroskaWriter, TrackSpec};
 use voltra_render::{Compositor, CpuCompositor};
 
@@ -65,6 +66,68 @@ pub struct Args {
     /// Frequency of the tone that marks each second, in hertz.
     #[arg(long, default_value_t = 1_000.0)]
     tone: f64,
+
+    /// How to store the video: `raw` I420, or `h264` through x264, which needs
+    /// a build with `--features ffmpeg`.
+    #[arg(long, value_enum, default_value_t = VideoCodec::Raw)]
+    video: VideoCodec,
+
+    /// H.264 bitrate in kilobits per second, constant. OBS's default.
+    #[arg(long, default_value_t = 6_000)]
+    bitrate: u32,
+}
+
+/// How `voltra record` stores video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum VideoCodec {
+    /// Uncompressed I420 (`V_UNCOMPRESSED`).
+    Raw,
+    /// H.264 through x264 (`V_MPEG4/ISO/AVC`).
+    H264,
+}
+
+/// Open the encoder the arguments ask for, if any.
+fn open_encoder(args: &Args) -> Result<Option<Box<dyn VideoEncoder>>> {
+    match args.video {
+        VideoCodec::Raw => Ok(None),
+        VideoCodec::H264 => {
+            #[cfg(feature = "ffmpeg")]
+            {
+                let mut settings = VideoSettings::new(args.size, args.fps);
+                settings.bitrate_kbps = args.bitrate;
+                let encoder =
+                    voltra_encode::FfmpegVideoEncoder::h264(settings).context("opening x264")?;
+                Ok(Some(Box::new(encoder)))
+            }
+            #[cfg(not(feature = "ffmpeg"))]
+            {
+                let _ = VideoSettings::new;
+                anyhow::bail!("this build has no H.264 encoder; rebuild with `--features ffmpeg`");
+            }
+        }
+    }
+}
+
+/// The video track for the file: raw, or the encoder's with its `avcC`.
+fn video_track(args: &Args, encoder: Option<&dyn VideoEncoder>) -> Result<TrackSpec> {
+    let Some(encoder) = encoder else {
+        return Ok(TrackSpec::RawVideo {
+            size: args.size,
+            fps: args.fps,
+        });
+    };
+    // Matroska writes CodecPrivate up front. x264 knows its headers on opening;
+    // an encoder that only learns them from its first packet needs the writer
+    // to wait, which no encoder here requires yet.
+    let headers = encoder
+        .headers()
+        .context("the encoder gave no headers before its first packet")?;
+    let decoder_config = h264::decoder_config(headers).context("reading the encoder's headers")?;
+    Ok(TrackSpec::H264 {
+        size: args.size,
+        fps: args.fps,
+        decoder_config,
+    })
 }
 
 /// Record and write the file.
@@ -74,11 +137,9 @@ pub struct Args {
 /// When the destination cannot be opened or written, or when compositing,
 /// converting or mixing fails.
 pub fn run(args: &Args) -> Result<()> {
+    let mut encoder = open_encoder(args)?;
     let tracks = [
-        TrackSpec::RawVideo {
-            size: args.size,
-            fps: args.fps,
-        },
+        video_track(args, encoder.as_deref())?,
         TrackSpec::PcmAudio {
             rate: RATE,
             layout: ChannelLayout::Stereo,
@@ -88,7 +149,7 @@ pub fn run(args: &Args) -> Result<()> {
     let summary = if args.output.as_os_str() == "-" {
         let sink = std::io::stdout().lock();
         let writer = MatroskaWriter::new(sink, &tracks).context("writing the header")?;
-        let (writer, summary) = record(writer, args)?;
+        let (writer, summary) = record(writer, args, encoder.as_deref_mut())?;
         drop(writer.finish().context("flushing the recording")?);
         summary
     } else {
@@ -96,7 +157,7 @@ pub fn run(args: &Args) -> Result<()> {
             .with_context(|| format!("creating {}", args.output.display()))?;
         let sink = std::io::BufWriter::with_capacity(64 * 1024, file);
         let writer = MatroskaWriter::new(sink, &tracks).context("writing the header")?;
-        let (writer, summary) = record(writer, args)?;
+        let (writer, summary) = record(writer, args, encoder.as_deref_mut())?;
         writer
             .finish_with_duration()
             .context("finishing the recording")?;
@@ -123,6 +184,19 @@ struct Summary {
 
 /// Interleave video and audio into `writer`, earliest first, and return it.
 fn record<W: Write>(
+    writer: MatroskaWriter<W>,
+    args: &Args,
+    encoder: Option<&mut (dyn VideoEncoder + 'static)>,
+) -> Result<(MatroskaWriter<W>, Summary)> {
+    match encoder {
+        None => record_raw(writer, args),
+        Some(encoder) => record_encoded(writer, args, encoder),
+    }
+}
+
+/// Raw video: every frame is ready the moment it is made, so whichever of the
+/// next frame and the next audio block comes first is written next.
+fn record_raw<W: Write>(
     mut writer: MatroskaWriter<W>,
     args: &Args,
 ) -> Result<(MatroskaWriter<W>, Summary)> {
@@ -158,6 +232,65 @@ fn record<W: Write>(
         writer,
         Summary {
             frames: n,
+            blocks: k,
+        },
+    ))
+}
+
+/// Encoded video: packets come out of the encoder late, so the video leads.
+/// Before each packet at `P`, every audio block at or before `P` is written;
+/// then the packet. The rest of the audio follows the encoder's flush.
+fn record_encoded<W: Write>(
+    mut writer: MatroskaWriter<W>,
+    args: &Args,
+    encoder: &mut (dyn VideoEncoder + 'static),
+) -> Result<(MatroskaWriter<W>, Summary)> {
+    let mut video = Video::new(args)?;
+    let mut audio = Audio::new(args.tone)?;
+    let frames = args.seconds * u64::from(args.fps.num()) / u64::from(args.fps.den());
+    let blocks = (args.seconds * u64::from(RATE.hz())).div_ceil(BLOCK as u64);
+    let length_prefixed = encoder.info().bitstream == Bitstream::LengthPrefixed;
+    let mut payload = Vec::new();
+    let mut k = 0u64;
+    let mut packets = 0u64;
+
+    let mut sink = |packet: EncodedPacket<'_>| -> voltra_encode::Result<()> {
+        let refuse = |error: anyhow::Error| voltra_encode::Error::Sink(format!("{error:#}"));
+        while k < blocks && RATE.pts(k * BLOCK as u64) <= packet.pts {
+            let block = audio.block(k).map_err(refuse)?;
+            writer
+                .write_audio(1, block)
+                .map_err(|error| refuse(error.into()))?;
+            k += 1;
+        }
+        let data = if length_prefixed {
+            packet.data
+        } else {
+            h264::to_length_prefixed(packet.data, &mut payload);
+            &payload
+        };
+        writer
+            .write_block(0, packet.pts, packet.keyframe, data)
+            .map_err(|error| refuse(error.into()))?;
+        packets += 1;
+        Ok(())
+    };
+    for n in 0..frames {
+        let frame = video.frame(n, args.fps)?;
+        encoder
+            .encode(EncoderInput::Frame(frame), &mut sink)
+            .context("encoding a frame")?;
+    }
+    encoder.flush(&mut sink).context("flushing the encoder")?;
+    while k < blocks {
+        let block = audio.block(k)?;
+        writer.write_audio(1, block).context("writing audio")?;
+        k += 1;
+    }
+    Ok((
+        writer,
+        Summary {
+            frames: packets,
             blocks: k,
         },
     ))

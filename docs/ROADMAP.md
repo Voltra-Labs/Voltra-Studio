@@ -77,8 +77,11 @@ reparte donde se puede medir.
 escribe en flujo —válido en cada byte, así que un cuelgue deja una grabación
 reproducible— y `voltra record`, que graba la escena con un tono mezclado por el
 mezclador de la fase 3. FFmpeg lee el fichero, y la sincronía medida en él es de
-una muestra, sin deriva. Falta comprimir: el siguiente paso son los **encoders**
-(ADR 0003) entregando paquetes a este mismo muxer.
+una muestra, sin deriva. El plan 017 añadió el **encoder H.264** tras un trait
+validado en papel contra x264, NVENC, VAAPI y VideoToolbox: x264 por
+`libavcodec`, tras la feature `ffmpeg`, graba con la misma sincronía medida y
+veinte veces menos espacio. Siguiente: el **encoder de audio**, con el
+entrelazado que necesitan dos encoders que entregan con retardo.
 
 Después: captura con PipeWire (fase 5), el momento en que el programa sirve para
 algo, streaming (fase 6) e interfaz (fase 7).
@@ -106,7 +109,10 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
 ## Fase 4 — Salida a fichero
 - Muxer Matroska nativo en flujo y `voltra record` con A/V sincronizado y
   medido por FFmpeg, aún sin comprimir (plan 016, hecho; ADR 0005).
-- Codificación de vídeo y audio y grabación comprimida.
+- Encoder H.264 (x264 por `libavcodec`, tras la feature `ffmpeg`) y grabación
+  comprimida con la misma sincronía medida (plan 017, hecho).
+- Encoder de audio y entrelazado de dos encoders con retardo.
+- Fotogramas B (el muxer ordenando por tiempo de decodificación).
 - El vídeo anclado al reloj de audio (venido de la fase 3).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni
   crecimiento de memoria.

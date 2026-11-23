@@ -96,17 +96,13 @@ fn the_recording_is_what_ffmpeg_expects() {
     assert!(probe.contains("duration=4.01"), "{probe}");
 }
 
-#[test]
-fn audio_and_video_are_in_sync_in_the_file() {
-    if !have_ffmpeg() {
-        return;
-    }
-    let file = TempFile::new("sync");
-    record(&file.0, &["--seconds", "6"]);
-
+/// Where each second's tone starts relative to its white frame, for seconds
+/// 1 to 5 of a six-second recording, measured on what `FFmpeg` decodes. Fails
+/// the test if any is off by half a frame or more, or the offset grows.
+fn sync_offsets(file: &Path) -> Vec<f64> {
     // One luma byte per frame: the white sync frames stand out.
     let luma = decode(
-        &file.0,
+        file,
         &[
             "-map",
             "0:v",
@@ -125,7 +121,7 @@ fn audio_and_video_are_in_sync_in_the_file() {
     assert_eq!(flashes.len(), 6, "one flash per second: {flashes:?}");
 
     // Mono float samples: each tone starts after at least 10 ms of silence.
-    let pcm = decode(&file.0, &["-map", "0:a", "-ac", "1", "-f", "f32le"]);
+    let pcm = decode(file, &["-map", "0:a", "-ac", "1", "-f", "f32le"]);
     let samples: Vec<f32> = pcm
         .chunks_exact(4)
         .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
@@ -167,7 +163,61 @@ fn audio_and_video_are_in_sync_in_the_file() {
         drift.abs() < 1e-4,
         "the offset grew by {drift} s over 4 s: {offsets:?}"
     );
+    offsets
+}
+
+#[test]
+fn audio_and_video_are_in_sync_in_the_file() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let file = TempFile::new("sync");
+    record(&file.0, &["--seconds", "6"]);
+    let offsets = sync_offsets(&file.0);
     eprintln!("sync offsets (audio − video): {offsets:?}");
+}
+
+/// The same measurement on a compressed recording: H.264 keeps the white frames
+/// white enough to find. And the bitrate asked for is a ceiling the video stays
+/// under — x264 with its VBV capped at the bitrate and no filler spends less
+/// when the scene is simple, which is what a recording wants.
+#[cfg(feature = "ffmpeg")]
+#[test]
+fn an_h264_recording_is_in_sync_and_within_its_bitrate() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let file = TempFile::new("sync-h264");
+    record(
+        &file.0,
+        &["--seconds", "6", "--video", "h264", "--bitrate", "1000"],
+    );
+    let probe = Command::new("ffprobe")
+        .args(["-v", "error", "-count_frames", "-show_entries"])
+        .arg("stream=codec_name,profile,nb_read_frames")
+        .args(["-of", "compact"])
+        .arg(&file.0)
+        .output()
+        .unwrap();
+    let probe = String::from_utf8(probe.stdout).unwrap();
+    assert!(
+        probe.contains("codec_name=h264|profile=High|nb_read_frames=180"),
+        "{probe}"
+    );
+
+    let offsets = sync_offsets(&file.0);
+    eprintln!("h264 sync offsets (audio − video): {offsets:?}");
+
+    // 282 blocks of 1024 stereo float samples are 2_310_144 bytes of audio;
+    // the rest is video and a few kilobytes of container.
+    let total = std::fs::metadata(&file.0).unwrap().len();
+    let video_bits = (total - 2_310_144) * 8;
+    let ceiling = 1_000_000 * 6;
+    eprintln!(
+        "h264 video: {} kbit/s against a 1000 kbit/s ceiling",
+        video_bits / 6_000
+    );
+    assert!(video_bits <= ceiling * 11 / 10, "{video_bits} bits in 6 s");
 }
 
 #[test]

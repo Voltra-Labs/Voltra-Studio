@@ -30,7 +30,9 @@ pub struct VideoSettings {
     pub size: FrameSize,
     /// Frame rate. Also the time base: frame `n` is `fps.pts(n)`.
     pub fps: Fps,
-    /// Target bitrate in kilobits per second, constant.
+    /// Bitrate in kilobits per second, as a ceiling: the encoder's rate
+    /// control is capped here and spends less on simple content. No filler is
+    /// added to pad it up.
     pub bitrate_kbps: u32,
     /// Seconds between keyframes.
     pub keyframe_seconds: u32,

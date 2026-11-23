@@ -89,8 +89,10 @@ impl Drop for Packet {
 unsafe impl Send for FfmpegVideoEncoder {}
 
 impl FfmpegVideoEncoder {
-    /// H.264 through x264, with OBS's defaults: preset `veryfast`, constant
-    /// bitrate. B-frames are off until the muxer orders by decode time
+    /// H.264 through x264, with OBS's defaults where they apply: preset
+    /// `veryfast` and a bitrate-driven rate control with the VBV capped at the
+    /// bitrate. Without filler, a simple scene stays under it rather than being
+    /// padded up to it. B-frames are off until the muxer orders by decode time
     /// (plan 017).
     ///
     /// # Errors

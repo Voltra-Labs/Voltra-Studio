@@ -13,6 +13,8 @@ name = "voltra"
 path = "src/main.rs"
 
 [features]
+# H.264 recording through libavcodec (voltra-encode's `ffmpeg`).
+ffmpeg = ["voltra-encode/ffmpeg"]
 default = []
 # Enables `voltra render --gpu`. Off by default so the default build needs no
 # graphics stack at all.
@@ -21,6 +23,7 @@ gpu = ["voltra-render/gpu"]
 [dependencies]
 voltra-audio = { workspace = true }
 voltra-core = { workspace = true }
+voltra-encode = { workspace = true }
 voltra-output = { workspace = true }
 voltra-render = { workspace = true }
 voltra-sources = { workspace = true }

@@ -220,3 +220,22 @@ fn odd_video_sizes_and_empty_track_lists_are_refused() {
     assert!(MatroskaWriter::new(Vec::new(), &[odd]).is_err());
     assert!(MatroskaWriter::new(Vec::new(), &[]).is_err());
 }
+
+#[test]
+fn an_h264_track_carries_its_decoder_config() {
+    let config = vec![0x01, 0x64, 0x00, 0x1E, 0xFF, 0xE1];
+    let track = TrackSpec::H264 {
+        size: FrameSize::new(16, 8).unwrap(),
+        fps: Fps::FPS_30,
+        decoder_config: config.clone(),
+    };
+    let mut writer = MatroskaWriter::new(Vec::new(), &[track, AUDIO]).unwrap();
+    writer
+        .write_block(0, Timestamp::ZERO, true, &[0, 0, 0, 1, 0x65])
+        .unwrap();
+    let file = writer.finish().unwrap();
+    assert_eq!(count(&file, b"V_MPEG4/ISO/AVC"), 1);
+    let private = file.windows(2).position(|w| w == [0x63, 0xA2]).unwrap();
+    assert_eq!(file[private + 2], 0x80 | 6, "size of the record");
+    assert_eq!(&file[private + 3..private + 9], &config[..]);
+}

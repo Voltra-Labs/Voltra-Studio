@@ -1224,6 +1224,7 @@ dependencies = [
  "tracing-subscriber",
  "voltra-audio",
  "voltra-core",
+ "voltra-encode",
  "voltra-output",
  "voltra-render",
  "voltra-sources",
@@ -1241,6 +1242,7 @@ dependencies = [
 name = "voltra-encode"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "ffmpeg-sys-next",
  "thiserror",
  "voltra-core",
