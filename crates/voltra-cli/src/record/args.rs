@@ -48,6 +48,12 @@ pub struct Args {
     /// AAC bitrate in kilobits per second. OBS's default.
     #[arg(long, default_value_t = 128)]
     pub(super) audio_bitrate: u32,
+
+    /// Report what the process holds — live heap, resident memory, queued
+    /// packets — every this many seconds of recorded time, on standard error.
+    /// 0 for no reports.
+    #[arg(long, value_name = "SECONDS", default_value_t = 0)]
+    pub(super) report_every: u64,
 }
 
 /// How `voltra record` stores video.

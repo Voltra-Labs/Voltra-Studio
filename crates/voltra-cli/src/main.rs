@@ -8,6 +8,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod demo;
+mod heap;
 mod info;
 mod record;
 mod render;
@@ -15,6 +16,11 @@ mod render;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
+
+/// Every allocation of the binary is counted: `voltra record --report-every`
+/// reads what is live while it records (see [`heap`]).
+#[global_allocator]
+static ALLOCATOR: heap::Counting = heap::Counting;
 
 /// Command-line arguments.
 #[derive(Debug, Parser)]

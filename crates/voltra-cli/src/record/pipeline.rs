@@ -12,6 +12,7 @@ use voltra_encode::{
 use voltra_output::{Interleaver, MatroskaWriter, TrackSpec};
 
 use super::args::{Args, AudioCodec, VideoCodec};
+use super::report::Reporter;
 use super::scene::{Audio, BLOCK, RATE, Video};
 
 /// The recording's time zero. One second in, so an encoder's priming — the
@@ -133,6 +134,7 @@ pub(super) fn record<W: Write>(
     let mut audio = Audio::new(args.tone)?;
     let mut interleaver = Interleaver::new(2);
     let mut summary = Summary::default();
+    let mut reporter = Reporter::new(args.report_every);
     // Reused across packets: raw payloads and Annex B conversions.
     let mut video_bytes = Vec::new();
     let mut audio_bytes = Vec::new();
@@ -172,6 +174,7 @@ pub(super) fn record<W: Write>(
                 }
             }
             n += 1;
+            reporter.reached(args.fps.pts(n), interleaver.queued());
         } else {
             let block = audio.block(k, block_at(k))?;
             match encoders.audio.as_deref_mut() {
