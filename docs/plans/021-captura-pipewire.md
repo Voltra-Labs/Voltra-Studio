@@ -181,10 +181,19 @@ a 60 fps, 2 s, cinco ejecuciones:
   automático no funciona con una fuente de GStreamer ("target not found",
   aunque la registra como fuente de vídeo por defecto); con un portal, el nodo
   llega ya preparado.
-- **En la PR del plan 020, el trabajo de la GPU (lavapipe) cayó con un
-  SIGSEGV** en los tests de paridad, que esa PR no tocaba. Pasó al
-  relanzarlo, y aquí pasa ocho de ocho. Queda anotado: si se repite, se
-  investiga en serio, que un fallo de segmento no es ruido.
+- **El trabajo de la GPU (lavapipe) cayó con un SIGSEGV** en los tests de
+  paridad, primero en la PR del plan 020 y otra vez en la de este, sin que
+  ninguna tocara `voltra-render`. Al volver a ocurrir se investigó:
+  - **Dónde:** CI ya corre en Ubuntu 26.04 con Mesa 26.0.8; este contenedor,
+    con Mesa 24, pasa siempre.
+  - **Causa probable:** cada test abría y destruía su propia instancia de
+    Vulkan y su dispositivo, en hilos paralelos, a pesar de que `GpuContext`
+    documenta que un proceso quiere un solo dispositivo.
+  - **Arreglo:** los tests comparten ahora uno solo, que se abre la primera vez
+    y no se cierra. Es lo que hará el programa, y además tardan un tercio
+    (0,2 s frente a 0,6 s).
+  - **Si vuelve a caer**, la causa es otra: el paso siguiente es sacar la pila
+    con `gdb` en CI.
 
 ## Pasos futuros anotados
 

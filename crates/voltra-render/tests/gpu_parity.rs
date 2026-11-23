@@ -15,12 +15,25 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use voltra_core::{
     Anchor, BlendMode, FrameSize, PixelFormat, ScaleFilter, Scene, SourceId, Timestamp, Vec2,
     VideoFrame,
 };
 use voltra_render::{Compositor, CpuCompositor, FrameProvider, GpuCompositor, GpuContext};
+
+/// The one device of this test binary, opened on first use and never closed —
+/// the rule `GpuContext` sets for a process, which the tests used to break by
+/// opening a device per test. Opening and destroying Vulkan instances on the
+/// test harness's parallel threads crashed Mesa 26's lavapipe in CI with a
+/// SIGSEGV (Ubuntu 26.04, Mesa 26.0.8); Mesa 24 never did.
+fn context() -> Result<GpuContext, String> {
+    static CONTEXT: OnceLock<Result<GpuContext, String>> = OnceLock::new();
+    CONTEXT
+        .get_or_init(|| GpuContext::new().map_err(|error| error.to_string()))
+        .clone()
+}
 
 /// A frame provider backed by a map, standing in for the engine.
 #[derive(Debug, Default)]
@@ -116,7 +129,7 @@ fn both(
     sources: &Sources,
     background: [u8; 4],
 ) -> Option<(VideoFrame, VideoFrame, [voltra_render::CompositeStats; 2])> {
-    let context = match GpuContext::new() {
+    let context = match context() {
         Ok(context) => context,
         Err(reason) => {
             eprintln!("skipping: {reason}");
@@ -434,7 +447,7 @@ fn a_clipped_item_agrees() {
 /// rasteriser" are different answers, and only one says anything about speed.
 #[test]
 fn the_adapter_reports_what_it_is() {
-    let Ok(context) = GpuContext::new() else {
+    let Ok(context) = context() else {
         eprintln!("skipping: no adapter");
         return;
     };
