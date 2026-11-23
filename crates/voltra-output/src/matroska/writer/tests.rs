@@ -239,3 +239,63 @@ fn an_h264_track_carries_its_decoder_config() {
     assert_eq!(file[private + 2], 0x80 | 6, "size of the record");
     assert_eq!(&file[private + 3..private + 9], &config[..]);
 }
+
+#[test]
+fn blocks_before_the_origin_get_negative_timestamps_in_the_first_cluster() {
+    let mut writer = MatroskaWriter::new(Vec::new(), &[AUDIO]).unwrap();
+    writer.set_origin(Timestamp::from_millis(1_000)).unwrap();
+    writer
+        .write_block(0, Timestamp::from_millis(979), true, &[0xAA])
+        .unwrap();
+    writer
+        .write_block(0, Timestamp::from_millis(1_000), true, &[0xBB])
+        .unwrap();
+    let file = writer.finish().unwrap();
+    assert_eq!(count(&file, &CLUSTER), 1);
+    let cluster = file.windows(4).position(|w| w == CLUSTER).unwrap();
+    // Timestamp 0, then a block at −21 and one at 0.
+    assert_eq!(&file[cluster + 12..cluster + 15], &[0xE7, 0x81, 0x00]);
+    assert_eq!(
+        &file[cluster + 15..cluster + 22],
+        &[0xA3, 0x85, 0x81, 0xFF, 0xEB, 0x80, 0xAA]
+    );
+    assert_eq!(
+        &file[cluster + 22..],
+        &[0xA3, 0x85, 0x81, 0x00, 0x00, 0x80, 0xBB]
+    );
+}
+
+#[test]
+fn the_origin_is_set_before_any_block_and_bounds_how_early_one_can_be() {
+    let mut writer = MatroskaWriter::new(Vec::new(), &[AUDIO]).unwrap();
+    writer.set_origin(Timestamp::from_millis(60_000)).unwrap();
+    assert!(
+        writer
+            .write_block(0, Timestamp::from_millis(20_000), true, &[])
+            .is_err(),
+        "40 s early"
+    );
+    let mut writer = MatroskaWriter::new(Vec::new(), &[AUDIO]).unwrap();
+    writer.write_block(0, Timestamp::ZERO, true, &[]).unwrap();
+    assert!(writer.set_origin(Timestamp::ZERO).is_err());
+}
+
+#[test]
+fn an_aac_track_carries_its_config_and_codec_delay() {
+    let track = TrackSpec::Aac {
+        rate: SampleRate::HZ_48000,
+        layout: ChannelLayout::Stereo,
+        decoder_config: vec![0x11, 0x90],
+        delay: 1024,
+    };
+    let file = MatroskaWriter::new(Vec::new(), &[track])
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert_eq!(count(&file, b"A_AAC"), 1);
+    let private = file.windows(2).position(|w| w == [0x63, 0xA2]).unwrap();
+    assert_eq!(&file[private + 2..private + 5], &[0x82, 0x11, 0x90]);
+    // 1024 samples at 48 kHz: 21 333 333 ns, as FFmpeg writes it.
+    let delay = file.windows(2).position(|w| w == [0x56, 0xAA]).unwrap();
+    assert_eq!(&file[delay + 2..delay + 7], &[0x84, 0x01, 0x45, 0x85, 0x55]);
+}

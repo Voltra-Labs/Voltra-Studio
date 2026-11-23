@@ -28,6 +28,7 @@ pub(crate) mod id {
     pub(crate) const FLAG_LACING: u32 = 0x9C;
     pub(crate) const CODEC_ID: u32 = 0x86;
     pub(crate) const CODEC_PRIVATE: u32 = 0x63A2;
+    pub(crate) const CODEC_DELAY: u32 = 0x56AA;
     pub(crate) const DEFAULT_DURATION: u32 = 0x23_E383;
     pub(crate) const VIDEO: u32 = 0xE0;
     pub(crate) const PIXEL_WIDTH: u32 = 0xB0;

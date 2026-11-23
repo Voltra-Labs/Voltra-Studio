@@ -159,3 +159,31 @@ fn a_file_cut_short_still_plays_up_to_the_cut() {
     std::fs::remove_file(&path).ok();
     std::fs::remove_file(&cut).ok();
 }
+
+#[test]
+fn ffmpeg_reads_a_block_before_the_origin_as_a_negative_start() {
+    if !have("ffprobe") {
+        return;
+    }
+    let path = scratch("origin");
+    let tracks = [TrackSpec::PcmAudio {
+        rate: RATE,
+        layout: ChannelLayout::Stereo,
+    }];
+    let mut writer =
+        MatroskaWriter::new(BufWriter::new(File::create(&path).unwrap()), &tracks).unwrap();
+    let origin = Timestamp::from_millis(1_000);
+    writer.set_origin(origin).unwrap();
+    // A block starting 1024 samples before the origin, as an AAC encoder's
+    // first packet does.
+    let first = RATE.pts(48_000 - 1024);
+    let mut block = AudioBuffer::new(RATE, ChannelLayout::Stereo, 1024, first).unwrap();
+    for _ in 0..10 {
+        writer.write_audio(0, &block).unwrap();
+        block.set_pts(block.end_pts());
+    }
+    writer.finish_with_duration().unwrap();
+    let start = probe(&path, "stream=start_time");
+    assert!(start.contains("start_time=-0.021"), "{start}");
+    std::fs::remove_file(&path).ok();
+}

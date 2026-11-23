@@ -14,9 +14,9 @@ use super::ebml::{self, UNKNOWN_SIZE, id};
 /// half a millisecond and never accumulates.
 const TIMESTAMP_SCALE_NS: u64 = 1_000_000;
 /// A new cluster opens at the first keyframe this long after the current one.
-const CLUSTER_SPAN_MS: u64 = 1_000;
+const CLUSTER_SPAN_MS: i64 = 1_000;
 /// And always before the 16-bit relative timestamp would overflow.
-const CLUSTER_LIMIT_MS: u64 = 32_000;
+const CLUSTER_LIMIT_MS: i64 = 32_000;
 
 /// One track of a recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +38,20 @@ pub enum TrackSpec {
         fps: Fps,
         /// The `AVCDecoderConfigurationRecord`, stored as `CodecPrivate`.
         decoder_config: Vec<u8>,
+    },
+    /// AAC (`A_AAC`). Blocks are raw AAC frames, written with
+    /// [`MatroskaWriter::write_block`] at the time of their first decoded
+    /// sample — before the origin for the encoder's priming.
+    Aac {
+        /// Sample rate.
+        rate: SampleRate,
+        /// Channel layout.
+        layout: ChannelLayout,
+        /// The `AudioSpecificConfig`, stored as `CodecPrivate`.
+        decoder_config: Vec<u8>,
+        /// Samples the decoder must discard at the start: the encoder's
+        /// priming, written as `CodecDelay`.
+        delay: u32,
     },
     /// 32-bit float PCM audio, interleaved (`A_PCM/FLOAT/IEEE`).
     PcmAudio {
@@ -115,6 +129,27 @@ impl<W: Write> MatroskaWriter<W> {
         };
         writer.put(&header)?;
         Ok(writer)
+    }
+
+    /// Set the instant that is the file's time zero. Call it before the first
+    /// block; without it, the first block is the origin.
+    ///
+    /// Blocks before the origin get negative timestamps. That is how an
+    /// encoder's priming is written: the first AAC packet starts 1024 samples
+    /// before the audio it encodes, and with `CodecDelay` on its track the
+    /// decoder discards exactly those, so the first sample heard is at zero.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] once a block has been written.
+    pub fn set_origin(&mut self, origin: Timestamp) -> Result<()> {
+        if self.last.is_some() {
+            return Err(Error::config(
+                "the origin must be set before the first block",
+            ));
+        }
+        self.origin = Some(origin);
+        Ok(())
     }
 
     /// Write one block: a packet of `track` at `pts`. This is the primitive
@@ -230,7 +265,7 @@ impl<W: Write> MatroskaWriter<W> {
         }
         self.last = Some(pts);
         let origin = *self.origin.get_or_insert(pts);
-        let ms = to_ms(pts.since(origin));
+        let ms = to_ms(pts, origin);
         // A video block lasts a frame; audio blocks extend by their own length
         // in `write_audio`.
         let frame = match self.tracks.get(track) {
@@ -244,28 +279,33 @@ impl<W: Write> MatroskaWriter<W> {
         let opens = match self.cluster {
             None => true,
             Some(start) => {
-                let span = ms - start;
+                let span = ms - i64::try_from(start).unwrap_or(i64::MAX);
                 (span >= CLUSTER_SPAN_MS && keyframe) || span >= CLUSTER_LIMIT_MS
             }
         };
         let mut header = std::mem::take(&mut self.header);
         header.clear();
         if opens {
+            // Cluster timestamps are unsigned: a block before the origin opens
+            // the first cluster at zero and sits before it, relatively.
+            let start = u64::try_from(ms).unwrap_or(0);
             ebml::put_id(&mut header, id::CLUSTER);
             header.extend_from_slice(&UNKNOWN_SIZE);
-            ebml::put_uint(&mut header, id::TIMESTAMP, ms);
-            self.cluster = Some(ms);
+            ebml::put_uint(&mut header, id::TIMESTAMP, start);
+            self.cluster = Some(start);
         }
-        let relative = ms - self.cluster.unwrap_or(ms);
+        let cluster = i64::try_from(self.cluster.unwrap_or(0)).unwrap_or(i64::MAX);
+        let Ok(relative) = i16::try_from(ms - cluster) else {
+            self.header = header;
+            return Err(Error::config(format!(
+                "block at {pts} is more than 32 s before the file's origin"
+            )));
+        };
         ebml::put_id(&mut header, id::SIMPLE_BLOCK);
         ebml::put_size(&mut header, 4 + len as u64);
         // Track number as a one-byte variable-length integer: tracks 1–126.
         ebml::put_size(&mut header, track as u64 + 1);
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "below CLUSTER_LIMIT_MS, within i16"
-        )]
-        header.extend_from_slice(&(relative as i16).to_be_bytes());
+        header.extend_from_slice(&relative.to_be_bytes());
         header.push(if keyframe { 0x80 } else { 0x00 });
         let result = self.put(&header);
         self.header = header;
@@ -310,9 +350,12 @@ impl<W: Write + Seek> MatroskaWriter<W> {
     }
 }
 
-/// Nanoseconds to the file's milliseconds, rounding to the nearest.
-const fn to_ms(nanos: u64) -> u64 {
-    (nanos + TIMESTAMP_SCALE_NS / 2) / TIMESTAMP_SCALE_NS
+/// A timestamp in the file's milliseconds relative to `origin`, rounded to
+/// the nearest and negative before it.
+fn to_ms(pts: Timestamp, origin: Timestamp) -> i64 {
+    let nanos = i128::from(pts.as_nanos()) - i128::from(origin.as_nanos());
+    let scale = i128::from(TIMESTAMP_SCALE_NS);
+    i64::try_from((nanos + scale / 2).div_euclid(scale)).unwrap_or(i64::MAX)
 }
 
 /// EBML header, the start of an unknown-size `Segment`, `Info` and `Tracks`.
@@ -381,6 +424,26 @@ fn write_header(out: &mut Vec<u8>, tracks: &[TrackSpec]) -> Result<usize> {
                 ebml::put_uint(&mut video, id::PIXEL_HEIGHT, u64::from(size.height()));
                 ebml::put_bytes(&mut video, id::COLOUR_SPACE, b"I420");
                 ebml::put_master(&mut entry, id::VIDEO, &video);
+            }
+            TrackSpec::Aac {
+                rate,
+                layout,
+                ref decoder_config,
+                delay,
+            } => {
+                ebml::put_uint(&mut entry, id::TRACK_TYPE, 2);
+                ebml::put_bytes(&mut entry, id::CODEC_ID, b"A_AAC");
+                ebml::put_bytes(&mut entry, id::CODEC_PRIVATE, decoder_config);
+                let delay = rate.duration_of(u64::from(delay));
+                ebml::put_uint(
+                    &mut entry,
+                    id::CODEC_DELAY,
+                    u64::try_from(delay.as_nanos()).unwrap_or(u64::MAX),
+                );
+                let mut audio = Vec::new();
+                ebml::put_float(&mut audio, id::SAMPLING_FREQUENCY, f64::from(rate.hz()));
+                ebml::put_uint(&mut audio, id::CHANNELS, layout.channels() as u64);
+                ebml::put_master(&mut entry, id::AUDIO, &audio);
             }
             TrackSpec::PcmAudio { rate, layout } => {
                 ebml::put_uint(&mut entry, id::TRACK_TYPE, 2);

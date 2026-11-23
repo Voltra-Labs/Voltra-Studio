@@ -14,8 +14,10 @@
 // Panicking helpers stay available inside tests (CLAUDE.md §3).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+mod interleave;
 mod matroska;
 mod y4m;
 
+pub use interleave::Interleaver;
 pub use matroska::{MatroskaWriter, TrackSpec};
 pub use y4m::{Y4mInterlacing, Y4mParams, Y4mWriter};
