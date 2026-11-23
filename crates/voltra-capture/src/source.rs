@@ -39,9 +39,30 @@ pub trait Capture: Send + fmt::Debug {
     /// Where the backend is.
     fn status(&self) -> CaptureStatus;
 
+    /// What the backend lost before a frame reached the frame channel. A
+    /// backend that cannot lose anything there keeps the default, all zero.
+    fn backend_stats(&self) -> BackendStats {
+        BackendStats::default()
+    }
+
     /// Stop capturing and wait for the backend's thread to finish. Calling it
     /// again does nothing.
     fn stop(&mut self);
+}
+
+/// What a backend counts before a frame reaches the frame channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BackendStats {
+    /// Frames the system delivered while a newer one was already waiting, and
+    /// that were handed back unused: drained to the newest, as OBS does with
+    /// PipeWire, and counted.
+    pub source_dropped: u64,
+    /// Buffers skipped because they were flagged corrupted, were empty, or
+    /// could not be read.
+    pub skipped: u64,
+    /// How many times the capture's clock was mapped onto the process's: once,
+    /// plus once per jump of more than 2 s.
+    pub clock_anchors: u64,
 }
 
 /// A capture as a scene source: on each tick it takes the latest frame the
@@ -64,6 +85,12 @@ impl CaptureSource {
     #[must_use]
     pub fn stats(&self) -> CaptureStats {
         self.reader.stats()
+    }
+
+    /// What the backend lost before the frame channel.
+    #[must_use]
+    pub fn backend_stats(&self) -> BackendStats {
+        self.backend.backend_stats()
     }
 
     /// Where the backend is.

@@ -8,3 +8,5 @@ disallowed-types = [
     { path = "std::sync::RwLock", reason = "the render thread must never block on capture" },
     { path = "std::sync::Condvar", reason = "the render thread must never block on capture" },
 ]
+# A proper name in prose, not code. ".." keeps clippy's defaults.
+doc-valid-idents = ["PipeWire", "GStreamer", "ScreenCaptureKit", ".."]

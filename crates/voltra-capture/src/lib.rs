@@ -21,10 +21,18 @@
 // Panicking helpers stay available inside tests (CLAUDE.md §3).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+#[cfg(any(feature = "pipewire", test))]
+mod clock;
+mod convert;
 mod delivery;
+#[cfg(feature = "pipewire")]
+mod pipewire;
 mod source;
 mod test_pattern;
 
+pub use convert::{SourceFormat, copy_to_bgra};
 pub use delivery::{CaptureStats, FrameReader, FrameWriter, frame_channel};
-pub use source::{Capture, CaptureSource, CaptureStatus};
+#[cfg(feature = "pipewire")]
+pub use pipewire::{PipeWireCapture, PipeWireTarget};
+pub use source::{BackendStats, Capture, CaptureSource, CaptureStatus};
 pub use test_pattern::TestPatternCapture;
