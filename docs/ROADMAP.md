@@ -130,6 +130,8 @@ mismo contador de muestras y no hay nada que anclar; **los fotogramas B** van a
 la fase 6, donde el bitrate más importa.
 
 ## Fase 5 — Captura de plataforma
+- `voltra-capture` y la entrega de la captura al compositor: el último fotograma
+  gana, por triple búfer, con cada descarte contado (plan 020, hecho; ADR 0006).
 - Pantalla, ventana, cámara y audio del sistema en la plataforma prioritaria.
 - Corrección de la deriva entre relojes de dispositivos, con remuestreo de razón
   variable (venida de la fase 3).

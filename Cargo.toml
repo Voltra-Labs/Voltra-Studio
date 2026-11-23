@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/voltra-core",
     "crates/voltra-audio",
+    "crates/voltra-capture",
     "crates/voltra-encode",
     "crates/voltra-sources",
     "crates/voltra-render",
@@ -29,6 +30,8 @@ voltra-output = { path = "crates/voltra-output", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
+# Capture-to-render delivery (ADR 0006). 8.x: 9.x needs Rust 1.86.
+triple_buffer = "8.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
