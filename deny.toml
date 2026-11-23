@@ -34,6 +34,7 @@ confidence-threshold = 0.9
 # decision.
 exceptions = [
     { crate = "voltra-audio", allow = ["GPL-2.0-or-later"] },
+    { crate = "voltra-capture", allow = ["GPL-2.0-or-later"] },
     { crate = "voltra-cli", allow = ["GPL-2.0-or-later"] },
     { crate = "voltra-core", allow = ["GPL-2.0-or-later"] },
     { crate = "voltra-encode", allow = ["GPL-2.0-or-later"] },

@@ -1,0 +1,10 @@
+# The reading side of this crate runs on the render thread, which must never
+# wait for a capture thread (CLAUDE.md §4.3, ADR 0006). Frames cross through a
+# wait-free triple buffer and counters through atomics; the blocking
+# primitives are banned so that stays true. (A capture backend's own thread may
+# sleep to pace itself: that waits for nobody.)
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "the render thread must never block on capture" },
+    { path = "std::sync::RwLock", reason = "the render thread must never block on capture" },
+    { path = "std::sync::Condvar", reason = "the render thread must never block on capture" },
+]
