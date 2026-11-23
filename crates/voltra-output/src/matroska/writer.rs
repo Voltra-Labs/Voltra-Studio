@@ -40,8 +40,10 @@ pub enum TrackSpec {
         decoder_config: Vec<u8>,
     },
     /// AAC (`A_AAC`). Blocks are raw AAC frames, written with
-    /// [`MatroskaWriter::write_block`] at the time of their first decoded
-    /// sample — before the origin for the encoder's priming.
+    /// [`MatroskaWriter::write_block`] at the encoder's packet time — the
+    /// first, priming packet a frame before the audio it encodes. The writer
+    /// stores each at that time plus `CodecDelay`, as Matroska defines it, so
+    /// the first sample played lands where the audio starts.
     Aac {
         /// Sample rate.
         rate: SampleRate,
@@ -134,10 +136,9 @@ impl<W: Write> MatroskaWriter<W> {
     /// Set the instant that is the file's time zero. Call it before the first
     /// block; without it, the first block is the origin.
     ///
-    /// Blocks before the origin get negative timestamps. That is how an
-    /// encoder's priming is written: the first AAC packet starts 1024 samples
-    /// before the audio it encodes, and with `CodecDelay` on its track the
-    /// decoder discards exactly those, so the first sample heard is at zero.
+    /// One origin for every track keeps any difference between encoders'
+    /// start-up from turning into an audio/video offset. Blocks before it get
+    /// negative timestamps, which Matroska allows within the first cluster.
     ///
     /// # Errors
     ///
@@ -265,16 +266,32 @@ impl<W: Write> MatroskaWriter<W> {
         }
         self.last = Some(pts);
         let origin = *self.origin.get_or_insert(pts);
-        let ms = to_ms(pts, origin);
-        // A video block lasts a frame; audio blocks extend by their own length
-        // in `write_audio`.
-        let frame = match self.tracks.get(track) {
+        // Matroska stores a block of a track with `CodecDelay` at its packet
+        // time *plus* the delay: the played time is the stored one minus
+        // `CodecDelay`. FFmpeg writes and reads it so.
+        let stored = match self.tracks.get(track) {
+            Some(&TrackSpec::Aac { rate, delay, .. }) => {
+                Timestamp::from_nanos(pts.as_nanos().saturating_add(
+                    u64::try_from(rate.duration_of(u64::from(delay)).as_nanos()).unwrap_or(0),
+                ))
+            }
+            _ => pts,
+        };
+        let ms = to_ms(stored, origin);
+        // How long the block lasts, for the declared duration: a frame of
+        // video; for PCM, its bytes over a sample's; an AAC-LC frame is
+        // always 1024 samples.
+        let lasts = match self.tracks.get(track) {
             Some(TrackSpec::RawVideo { fps, .. } | TrackSpec::H264 { fps, .. }) => {
                 fps.frame_duration()
             }
-            _ => std::time::Duration::ZERO,
+            Some(&TrackSpec::PcmAudio { rate, layout }) => {
+                rate.duration_of((len / (4 * layout.channels().max(1))) as u64)
+            }
+            Some(&TrackSpec::Aac { rate, .. }) => rate.duration_of(1024),
+            None => std::time::Duration::ZERO,
         };
-        self.extend(pts, frame);
+        self.extend(pts, lasts);
 
         let opens = match self.cluster {
             None => true,

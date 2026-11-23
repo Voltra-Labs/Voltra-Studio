@@ -33,5 +33,10 @@ name = "x264"
 harness = false
 required-features = ["ffmpeg"]
 
+[[bench]]
+name = "aac"
+harness = false
+required-features = ["ffmpeg"]
+
 [lints]
 workspace = true

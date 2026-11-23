@@ -80,8 +80,11 @@ mezclador de la fase 3. FFmpeg lee el fichero, y la sincronía medida en él es 
 una muestra, sin deriva. El plan 017 añadió el **encoder H.264** tras un trait
 validado en papel contra x264, NVENC, VAAPI y VideoToolbox: x264 por
 `libavcodec`, tras la feature `ffmpeg`, graba con la misma sincronía medida y
-veinte veces menos espacio. Siguiente: el **encoder de audio**, con el
-entrelazado que necesitan dos encoders que entregan con retardo.
+veinte veces menos espacio. El plan 018 añadió el **encoder AAC** y el
+**entrelazado**: `voltra record --video h264 --audio aac` graba un fichero
+comprimido en las dos pistas, con la sincronía medida en marcas reales a 0,35 ms
+y sin deriva. Lo que queda para cerrar la fase es su criterio de salida:
+**grabar minutos sin deriva ni crecimiento de memoria**, medido.
 
 Después: captura con PipeWire (fase 5), el momento en que el programa sirve para
 algo, streaming (fase 6) e interfaz (fase 7).
@@ -111,7 +114,8 @@ Deuda de rendimiento pendiente en `docs/PERFORMANCE.md`.
   medido por FFmpeg, aún sin comprimir (plan 016, hecho; ADR 0005).
 - Encoder H.264 (x264 por `libavcodec`, tras la feature `ffmpeg`) y grabación
   comprimida con la misma sincronía medida (plan 017, hecho).
-- Encoder de audio y entrelazado de dos encoders con retardo.
+- Encoder de audio AAC y entrelazado de encoders con retardo, con un origen
+  común para todas las pistas (plan 018, hecho).
 - Fotogramas B (el muxer ordenando por tiempo de decodificación).
 - El vídeo anclado al reloj de audio (venido de la fase 3).
 - **Criterio de salida:** grabar una escena durante minutos sin deriva A/V ni

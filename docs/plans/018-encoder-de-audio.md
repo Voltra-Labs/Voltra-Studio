@@ -1,8 +1,9 @@
 # 018 — Encoder de audio y entrelazado
 
 - **Fase:** 4
-- **Estado:** en curso (2026-11-23) — ejecutado sin esperar revisión del plan,
-  por indicación expresa del responsable ("no me preguntes, dale")
+- **Estado:** completado (2026-11-23) — ver Resultado. Ejecutado sin esperar
+  revisión del plan, por indicación expresa del responsable ("no me preguntes,
+  dale").
 
 ## Objetivo
 
@@ -134,3 +135,66 @@ del entrelazador por paquete, anotados.
 - **Marcas negativas en reproductores.** Es lo que escribe FFmpeg y lo que lee;
   si un reproductor importante no las admite, el plan B es desplazar todo el
   fichero por el retardo, como hace `avoid_negative_ts`.
+
+## Resultado
+
+Puerta de calidad en verde: **336 tests** por defecto (desde 325) y **47** con
+`--features ffmpeg` en `voltra-encode` y `voltra-cli`. Cuatro commits:
+documentos; entrelazador, origen y pista AAC; `AudioEncoder` con AAC; y
+`voltra record --audio aac` por el entrelazador.
+
+### Sincronía, medida con marcas reales
+
+| Grabación | Audio − vídeo, segundos 1 a 5 |
+|---|---|
+| Vídeo crudo, PCM | 20,8 µs, constante |
+| H.264, PCM | 20,8 µs, constante |
+| **H.264, AAC** | **0,354 ms (17 muestras), constante** |
+
+Los 20,8 µs son la muestra de fase cero del tono, como desde el plan 016. Los
+0,35 ms de AAC son el códec: desplaza un poco el comienzo del pitido dentro de
+su trama, y el detector lo ve 17 muestras más tarde. El margen era medio
+fotograma, 16,7 ms. En ningún caso hay deriva.
+
+### Coste
+
+AAC: 958 µs por bloque de 1024 muestras estéreo, el 4,5 % de su duración. El
+entrelazador: 119 ns por par de paquetes. Detalle y el experimento fallido con
+`aac_coder=fast` en `PERFORMANCE.md`.
+
+## Lo que encontraron las pruebas
+
+Tres fallos, uno de ellos anterior a este plan:
+
+1. **El convenio de `CodecDelay` estaba al revés en la referencia.** La leí en
+   la salida de `ffprobe`, que da la marca ya corregida, y no en el fichero. Con
+   el retardo restado en el encoder y otra vez en el demuxer, el AAC empezaba a
+   −42 ms. Matroska define `CodecDelay` como lo que se **resta** de la marca
+   almacenada: el muxer suma ahora el retardo a las marcas de la pista AAC, y el
+   fichero coincide con el de FFmpeg. La referencia está corregida y lo dice.
+2. **Los fotogramas de `voltra record` salían sellados sin el origen.** El sello
+   se ponía antes de `rgb_to_yuv`, que copia el del lienzo. Con la línea de
+   tiempo empezando en cero, como hasta el plan 017, coincidían; con el origen
+   de 1 s, el vídeo entero quedaba un segundo antes del audio.
+3. **El test de sincronía de los planes 016 y 017 no miraba las marcas de
+   tiempo**: calculaba el instante de cada destello como índice ÷ 30 y el de cada
+   pitido como muestra ÷ 48 000. Un desplazamiento de una pista entera —como el
+   del punto 2— le pasaba inadvertido. Ahora usa la marca de presentación de
+   cada fotograma decodificado y la del primer bloque de audio, que es lo que
+   ve un reproductor; y decodifica sin `fps_mode` por defecto, porque FFmpeg
+   duplicaba el primer fotograma para rellenar el hueco del cebado del audio y
+   corría un índice todos los destellos. Con la medida nueva, las grabaciones
+   de los planes 016 y 017 dan las mismas cifras que entonces: su sincronía era
+   real, pero no estaba demostrada.
+
+## Desviaciones respecto al plan
+
+- **Las marcas negativas no hacen falta para AAC**, contra lo que decía el
+  plan: con `CodecDelay` sumado, el primer bloque se almacena en el origen. El
+  soporte queda —es parte de Matroska y tiene su test con FFmpeg— para lo que
+  caiga antes del origen.
+- **El `AudioSpecificConfig` de FFmpeg ocupa 5 bytes**, no 2: añade la extensión
+  que señala que no hay SBR. Es lo que su muxer almacena, y lo que se guarda.
+- **`voltra record` informa el pico de paquetes en cola** del entrelazador: el
+  retardo de x264 medido en paquetes de audio.
+- **`record.rs` se dividió** en `args`, `scene` y `pipeline`, por tamaño.

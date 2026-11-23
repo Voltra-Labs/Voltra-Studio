@@ -31,20 +31,31 @@ Su bitrate por defecto es **128 kbps** (`obs_data_set_default_int(settings,
 
 Y todo encoder con ventana —AAC por su transformada solapada, Opus por su
 predicción— necesita muestras **antes** de la primera que se le da: el
-*priming* o retardo inicial. `libavcodec` lo publica en `initial_padding`, y el
-primer paquete sale sellado **antes del cero**. Comprobado con FFmpeg 6.1 en
-este contenedor, escribiendo Matroska con su propio muxer:
+*priming* o retardo inicial. `libavcodec` lo publica en `initial_padding`, y su
+primer paquete sale sellado **antes del cero**: lleva las muestras de cebado.
+Comprobado con FFmpeg 6.1 en este contenedor, escribiendo Matroska con su propio
+muxer y leyéndolo con `ffprobe`:
 
 | | AAC (`aac`) | Opus (`libopus`) |
 |---|---|---|
 | `initial_padding` | 1024 muestras | 312 muestras |
-| Marca del primer paquete | **−21 ms** | **−7 ms** |
+| Marca del primer paquete, **según el demuxer** | −21 ms | −7 ms |
+| Marca del primer bloque, **almacenada** | 0 | 0 |
 | `CodecDelay` escrito | 21 333 333 ns | 6 500 000 ns |
 
-Es la convención: el bloque lleva la marca de su primera muestra **decodificada**,
-retardo incluido, y `CodecDelay` le dice al decodificador cuánto descartar. Así
-la primera muestra que suena cae en el cero. Ignorar cualquiera de las dos
-mitades desplaza el audio 21 ms respecto al vídeo en AAC.
+La especificación de Matroska define `CodecDelay` como el retardo del codec que
+**se resta de la marca de cada bloque** para obtener la que se reproduce. Por
+eso FFmpeg almacena el primer bloque en 0 —la marca del paquete más el retardo—
+y su demuxer lo devuelve a −21 ms; el decodificador descarta el cebado, y la
+primera muestra que suena cae en el cero. Las dos mitades van juntas: almacenar
+la marca del paquete sin sumarle el retardo, con `CodecDelay` declarado,
+adelanta el audio 21 ms; omitir `CodecDelay` lo retrasa lo mismo.
+
+*Corrección.* La primera versión de esta referencia leyó la fila del demuxer como
+si fuera la marca almacenada, y el plan 018 la siguió. La grabación lo destapó:
+`ffprobe` daba al AAC un inicio de −42 ms, el retardo restado dos veces. El
+muxer suma ahora `CodecDelay` a las marcas de la pista, y el fichero coincide con
+el de FFmpeg (inicio a −21 ms al leerlo).
 
 ## 2. Entrelazar en OBS
 
@@ -85,8 +96,9 @@ Todo bajo `interleaved_mutex`, y con una copia de cada paquete
 
 - Acumular hasta una trama completa y sellar cada trama desde un contador de
   muestras, no desde los bloques de entrada.
-- La convención de FFmpeg para el retardo: el primer paquete antes del cero y
-  `CodecDelay` en la pista. Es lo que leen los reproductores.
+- La convención de Matroska para el retardo, tal como la escribe FFmpeg:
+  `CodecDelay` en la pista y cada bloque almacenado a la marca de su paquete más
+  ese retardo. Es lo que leen los reproductores.
 - La regla de entrelazado de OBS: se envía el paquete más temprano cuando todas
   las pistas tienen algo pendiente, porque cada pista entrega en orden.
 - Copiar el paquete al encolarlo: el encoder presta su búfer y lo reutiliza.
@@ -95,10 +107,9 @@ Todo bajo `interleaved_mutex`, y con una copia de cada paquete
 
 1. **Un único origen para todas las pistas**, en vez de poner a cero cada una en
    su primer paquete. Con marcas absolutas en un mismo reloj, el muxer recibe
-   un cero explícito —el instante en que empieza la grabación— y el audio que el
-   encoder adelanta por su retardo cae antes de él, con marca negativa, como lo
-   escribe FFmpeg. Ninguna diferencia entre los arranques de los encoders se
-   convierte en un desfase A/V.
+   un cero explícito —el instante en que empieza la grabación—, y ninguna
+   diferencia entre los arranques de los encoders se convierte en un desfase
+   A/V. Lo que caiga antes del origen se escribe con marca negativa.
 2. **Cola por pista en vez de un array ordenado global.** Cada pista entrega en
    orden, así que basta con mirar la cabeza de cada una; insertar ordenado en un
    array, como OBS, desplaza memoria en cada paquete.

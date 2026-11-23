@@ -299,3 +299,26 @@ fn an_aac_track_carries_its_config_and_codec_delay() {
     let delay = file.windows(2).position(|w| w == [0x56, 0xAA]).unwrap();
     assert_eq!(&file[delay + 2..delay + 7], &[0x84, 0x01, 0x45, 0x85, 0x55]);
 }
+
+#[test]
+fn aac_blocks_are_stored_at_their_time_plus_codec_delay() {
+    let track = TrackSpec::Aac {
+        rate: SampleRate::HZ_48000,
+        layout: ChannelLayout::Stereo,
+        decoder_config: vec![0x11, 0x90],
+        delay: 1024,
+    };
+    let mut writer = MatroskaWriter::new(Vec::new(), &[track]).unwrap();
+    let origin = Timestamp::from_millis(1_000);
+    writer.set_origin(origin).unwrap();
+    // The priming packet, a frame before the audio: stored at 0, because the
+    // played time is the stored time minus CodecDelay.
+    writer
+        .write_block(0, SampleRate::HZ_48000.pts(48_000 - 1024), true, &[0xAA])
+        .unwrap();
+    let file = writer.finish().unwrap();
+    assert_eq!(
+        &file[file.len() - 7..],
+        &[0xA3, 0x85, 0x81, 0x00, 0x00, 0x80, 0xAA]
+    );
+}

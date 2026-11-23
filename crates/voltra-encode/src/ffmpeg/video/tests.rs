@@ -187,3 +187,25 @@ fn frame_indices_round_trip_at_fractional_rates() {
         assert_eq!(frame_index(Fps::FPS_60, Fps::FPS_60.pts(n)), n);
     }
 }
+
+#[test]
+fn timestamps_survive_a_stream_that_does_not_start_at_zero() {
+    // A monotonic clock is never at zero: start an hour in.
+    let mut encoder = FfmpegVideoEncoder::h264(settings()).unwrap();
+    let start = 30 * 3_600;
+    let mut times = Vec::new();
+    let mut sink = |packet: EncodedPacket<'_>| -> Result<()> {
+        times.push(packet.pts);
+        Ok(())
+    };
+    for n in 0..10 {
+        let mut input = frame(n);
+        input.set_pts(Fps::FPS_30.pts(start + n));
+        encoder
+            .encode(EncoderInput::Frame(&input), &mut sink)
+            .unwrap();
+    }
+    encoder.flush(&mut sink).unwrap();
+    let expected: Vec<_> = (0..10).map(|n| Fps::FPS_30.pts(start + n)).collect();
+    assert_eq!(times, expected);
+}

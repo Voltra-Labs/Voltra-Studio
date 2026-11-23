@@ -216,6 +216,28 @@ Tamaño: 6 s a 640×360 ocupan 64,5 MB sin comprimir y 3,2 MB en H.264 con un
 techo de 6000 kbit/s, de los que 2,3 MB son el audio PCM. El vídeo usa menos que
 el techo cuando la escena es sencilla: con un techo de 1000 kbit/s, 626 kbit/s.
 
+El encoder de audio y el entrelazado (plan 018):
+
+| Operación | Coste | % del presupuesto | Plan |
+|---|---|---|---|
+| **AAC, bloque de 1024 muestras estéreo** (`aac` de FFmpeg, 128 kbps) | **958 µs** | **4,5 % de 21,3 ms** | 018 |
+| Entrelazar un paquete de vídeo (12,5 KB) y uno de audio (400 B) | 119 ns | — | 018 |
+| `voltra record --video h264 --audio aac`, 6 s a 320×180 | 0,20 s en total | — | 018 |
+
+El AAC nativo de FFmpeg es caro para lo que hace: casi un milisegundo por bloque
+en un hilo, el 4,5 % del tiempo real del audio. No es el hilo de audio —el
+encoder vive donde se escribe el fichero—, pero es CPU que no está para otra
+cosa.
+
+| Hipótesis | Resultado |
+|---|---|
+| El codificador de cuantización por defecto es el lento (`twoloop`); `aac_coder=fast` lo abarata | **No.** 958 → 983 µs (+3 %, ruido): en FFmpeg 6.1 el de por defecto ya es el rápido. Revertido. Qué cuesta de verdad queda sin perfilar. |
+
+El entrelazador no cuenta: una copia a un búfer reutilizado y la elección de la
+cabeza más temprana, unos 60 ns por paquete. El pico de paquetes en cola, que
+`voltra record` informa, es el retardo de x264 (su *lookahead*) en paquetes de
+audio: 45 en la grabación de prueba.
+
 Las cuatro últimas son del pipeline entero —componer, convertir y escribir— con
 la escena de demostración de `voltra render`, no de un microbenchmark. Es la
 primera medida de extremo a extremo del proyecto.

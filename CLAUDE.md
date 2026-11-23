@@ -302,16 +302,20 @@ fase 4 (`docs/ROADMAP.md`).
 escena con sonido con la sincronía A/V medida por FFmpeg en el propio fichero:
 una muestra, sin deriva. El plan 017 dejó `voltra-encode`: el trait
 `VideoEncoder`, las utilidades H.264 en Rust puro y x264 por `libavcodec` tras
-la feature `ffmpeg`, con la misma sincronía medida en el fichero comprimido.
+la feature `ffmpeg`, con la misma sincronía medida en el fichero comprimido. El
+plan 018 añadió `AudioEncoder` con AAC, el `Interleaver` de `voltra-output` y un
+origen común para todas las pistas: H.264 + AAC salen sincronizados a 0,35 ms,
+sin deriva, medidos con las marcas de presentación que ve un reproductor.
 
 ```bash
 voltra record -o demo.mkv --seconds 10
 voltra record -o - | ffplay -
-cargo run --release -p voltra-cli --features ffmpeg -- record -o demo.mkv --video h264
+cargo run --release -p voltra-cli --features ffmpeg -- record -o demo.mkv --video h264 --audio aac
 ```
 
 La feature `ffmpeg` necesita las cabeceras de desarrollo de FFmpeg y `libclang`
-(ver el trabajo `encode` de CI). Siguiente paso: el encoder de audio.
+(ver el trabajo `encode` de CI). Siguiente paso: el criterio de salida de la
+fase, minutos de grabación sin deriva ni crecimiento de memoria, medidos.
 
 Decisiones ya tomadas (ver `docs/adr/`):
 
@@ -333,4 +337,5 @@ Remuestreo: `docs/references/audio-resampling.md`.
 Del reloj de la fuente al de la mezcla: `docs/references/audio-sync.md`.
 Grabar a fichero: `docs/references/recording.md`.
 El encoder de vídeo: `docs/references/encoding.md`.
+El encoder de audio y el entrelazado: `docs/references/audio-encoding.md`.
 Fases del producto: `docs/ROADMAP.md`.

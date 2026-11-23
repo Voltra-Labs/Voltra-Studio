@@ -53,6 +53,29 @@ fn record(output: &Path, extra: &[&str]) -> std::process::Output {
     out
 }
 
+/// The presentation time of every decoded frame of stream `kind` (`v`, `a`).
+fn frame_times(file: &Path, kind: &str) -> Vec<f64> {
+    let out = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            kind,
+            "-show_entries",
+            "frame=pts_time",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(file)
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.split(',').next()?.parse().ok())
+        .collect()
+}
+
 /// Decode one stream of `file` to raw bytes with `FFmpeg`.
 fn decode(file: &Path, args: &[&str]) -> Vec<u8> {
     let out = Command::new("ffmpeg")
@@ -100,27 +123,36 @@ fn the_recording_is_what_ffmpeg_expects() {
 /// 1 to 5 of a six-second recording, measured on what `FFmpeg` decodes. Fails
 /// the test if any is off by half a frame or more, or the offset grows.
 fn sync_offsets(file: &Path) -> Vec<f64> {
-    // One luma byte per frame: the white sync frames stand out.
+    // Real timestamps, not indices: a stream shifted as a whole must show up.
+    // One luma byte per decoded frame, frames passed through as they are —
+    // FFmpeg would otherwise duplicate frames to fill a timeline that starts
+    // with the audio's priming — paired with each frame's own time.
+    let times = frame_times(file, "v");
     let luma = decode(
         file,
         &[
             "-map",
             "0:v",
+            "-fps_mode",
+            "passthrough",
             "-vf",
             "scale=1:1,format=gray",
             "-f",
             "rawvideo",
         ],
     );
+    assert_eq!(luma.len(), times.len(), "one luma byte per decoded frame");
     let flashes: Vec<f64> = luma
         .iter()
-        .enumerate()
-        .filter(|&(_, &value)| value > 200)
-        .map(|(n, _)| n as f64 / 30.0)
+        .zip(&times)
+        .filter(|&(&value, _)| value > 200)
+        .map(|(_, &time)| time)
         .collect();
     assert_eq!(flashes.len(), 6, "one flash per second: {flashes:?}");
 
-    // Mono float samples: each tone starts after at least 10 ms of silence.
+    // Mono float samples from the first decoded one, which is at the audio's
+    // first frame time: each tone starts after at least 10 ms of silence.
+    let audio_start = frame_times(file, "a")[0];
     let pcm = decode(file, &["-map", "0:a", "-ac", "1", "-f", "f32le"]);
     let samples: Vec<f32> = pcm
         .chunks_exact(4)
@@ -131,7 +163,7 @@ fn sync_offsets(file: &Path) -> Vec<f64> {
     for (index, &sample) in samples.iter().enumerate() {
         if sample.abs() > 0.02 {
             if quiet > 480 {
-                onsets.push(index as f64 / 48_000.0);
+                onsets.push(audio_start + index as f64 / 48_000.0);
             }
             quiet = 0;
         } else {
@@ -218,6 +250,41 @@ fn an_h264_recording_is_in_sync_and_within_its_bitrate() {
         video_bits / 6_000
     );
     assert!(video_bits <= ceiling * 11 / 10, "{video_bits} bits in 6 s");
+}
+
+/// H.264 and AAC: two encoders, each delivering late by its own delay, through
+/// the interleaver. AAC's first packet is its priming, a frame before the
+/// audio; the track's `CodecDelay` makes the decoder discard it. If either
+/// half were wrong, the tones would land 21 ms off their flashes.
+#[cfg(feature = "ffmpeg")]
+#[test]
+fn an_h264_and_aac_recording_is_in_sync() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let file = TempFile::new("sync-aac");
+    record(
+        &file.0,
+        &["--seconds", "6", "--video", "h264", "--audio", "aac"],
+    );
+    let probe = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_name,profile,initial_padding",
+        ])
+        .args(["-of", "compact"])
+        .arg(&file.0)
+        .output()
+        .unwrap();
+    let probe = String::from_utf8(probe.stdout).unwrap();
+    assert!(
+        probe.contains("codec_name=aac|profile=LC|initial_padding=1024"),
+        "{probe}"
+    );
+    let offsets = sync_offsets(&file.0);
+    eprintln!("h264 + aac sync offsets (audio − video): {offsets:?}");
 }
 
 #[test]
